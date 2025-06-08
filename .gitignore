@@ -1,0 +1,194 @@
+# Build directories
+build/
+bin/
+obj/
+out/
+debug/
+release/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+install_manifest.txt
+
+# Compiled Object files
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+tacs
+perf_test
+
+# Performance and benchmark files
+perf_test*
+benchmark_*
+*.perf
+*.prof
+performance_*
+timing_*
+
+# Debug files
+*.dSYM/
+*.pdb
+*.ilk
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.backup
+
+# Data files
+*.dat
+*.bin
+data/
+datasets/
+models/
+weights/
+checkpoints/
+*.onnx
+*.pb
+*.tflite
+
+# Configuration files (keep templates)
+config.yaml
+*.cfg
+!config.template.yaml
+!*.cfg.example
+
+# Libraries and dependencies
+lib/
+libs/
+third_party/
+external/
+vendor/
+node_modules/
+*.tar.gz
+*.zip
+
+# Python cache (if any Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Documentation artifacts
+plan.txt
+task.txt
+traffic_app.txt
+notes.txt
+todo.txt
+*.draft
+*.notes
+
+# Test outputs
+test_results/
+test_output/
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Image/Video datasets
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.mp4
+*.avi
+*.mov
+*.mkv
+!assets/
+!docs/images/
+
+# Large model files
+*.weights
+*.model
+*.h5
+*.pkl
+*.pt
+*.pth
+
+# Logs and runtime files
+logs/
+*.log
+core
+core.*
+
+# Package files
+*.deb
+*.rpm
+*.pkg
+*.dmg
+
+# Archive files
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.zip
+*.rar
+*.7z
+
+# Editor backup files
+*~
+*.swp
+*.swo
+.*.swp
+.*.swo
+
+# Profiling data
+gmon.out
+*.prof
+callgrind.out.*
+perf.data*
+
+# Memory debugging
+valgrind-*.log
+*.memcheck
+
+# Generated documentation
+docs/_build/
+docs/html/
+docs/latex/
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
