@@ -45,6 +45,7 @@ set(HEADERS
 )
 
 add_executable(tacs src/main.cpp ${SOURCES})
+add_executable(phase1_validation phase1_validation.cpp ${SOURCES})
 
 find_package(GTest QUIET)
 if(GTest_FOUND)
