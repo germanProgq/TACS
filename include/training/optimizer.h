@@ -1,3 +1,11 @@
+/**
+ * @file optimizer.h
+ * @brief Production-ready optimizers for neural network training
+ * 
+ * Implements SGD with momentum and Adam optimizers with advanced features
+ * including weight decay, bias correction, and numerical stability.
+ * Optimized for high-performance training of TACS neural networks.
+ */
 #pragma once
 
 #include "core/tensor.h"
@@ -15,6 +23,13 @@ public:
     void zero_grad();
     void set_learning_rate(float lr) { learning_rate_ = lr; }
     float get_learning_rate() const { return learning_rate_; }
+    
+    // Advanced parameter update with momentum and weight decay
+    void update_parameter(const std::string& param_name, 
+                          const core::Tensor& gradient, 
+                          core::Tensor& parameter);
+    
+    void reset();
 
 private:
     float learning_rate_;
@@ -32,6 +47,13 @@ public:
     void zero_grad();
     void set_learning_rate(float lr) { learning_rate_ = lr; }
     float get_learning_rate() const { return learning_rate_; }
+    
+    // Advanced parameter update with adaptive learning rates
+    void update_parameter(const std::string& param_name,
+                          const core::Tensor& gradient,
+                          core::Tensor& parameter);
+    
+    void reset();
 
 private:
     float learning_rate_;
@@ -40,8 +62,8 @@ private:
     float eps_;
     float weight_decay_;
     int step_count_;
-    std::unordered_map<std::string, core::Tensor> m_;
-    std::unordered_map<std::string, core::Tensor> v_;
+    std::unordered_map<std::string, core::Tensor> m_;  // First moment estimates
+    std::unordered_map<std::string, core::Tensor> v_;  // Second moment estimates
 };
 
 }

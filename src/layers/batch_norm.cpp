@@ -2,6 +2,12 @@
 #include <cmath>
 #include <stdexcept>
 
+#ifdef __AVX2__
+#include <immintrin.h>
+#elif defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
+
 namespace tacs {
 namespace layers {
 
@@ -98,7 +104,97 @@ core::Tensor BatchNorm2D::forward(const core::Tensor& input, bool training) {
             }
         }
     } else {
-        // Production-optimized inference path with vectorized operations
+        // Production-optimized inference path with SIMD vectorization
+#ifdef __AVX2__
+        constexpr int SIMD_WIDTH = 8;
+        const int spatial_size = height * width;
+        const int channel_stride = spatial_size;
+        
+        for (int n = 0; n < batch_size; ++n) {
+            const float* input_batch = input_data + n * channels * spatial_size;
+            float* output_batch = output_data + n * channels * spatial_size;
+            
+            for (int c = 0; c < channels; ++c) {
+                const float mean_val = running_mean_data[c];
+                const float var_val = running_var_data[c];
+                const float inv_std = 1.0f / std::sqrt(var_val + eps_);
+                const float scale = weight_data[c] * inv_std;
+                const float shift = bias_data[c] - mean_val * scale;
+                
+                const float* input_channel = input_batch + c * channel_stride;
+                float* output_channel = output_batch + c * channel_stride;
+                
+                // SIMD vectorized computation
+                __m256 scale_vec = _mm256_set1_ps(scale);
+                __m256 shift_vec = _mm256_set1_ps(shift);
+                
+                int remaining = spatial_size;
+                int pos = 0;
+                
+                // Process in SIMD blocks
+                while (remaining >= SIMD_WIDTH) {
+                    __m256 input_vec = _mm256_loadu_ps(&input_channel[pos]);
+                    __m256 result = _mm256_fmadd_ps(input_vec, scale_vec, shift_vec);
+                    _mm256_storeu_ps(&output_channel[pos], result);
+                    
+                    pos += SIMD_WIDTH;
+                    remaining -= SIMD_WIDTH;
+                }
+                
+                // Handle remaining elements
+                while (remaining > 0) {
+                    output_channel[pos] = input_channel[pos] * scale + shift;
+                    ++pos;
+                    --remaining;
+                }
+            }
+        }
+#elif defined(__ARM_NEON)
+        constexpr int SIMD_WIDTH = 4;
+        const int spatial_size = height * width;
+        const int channel_stride = spatial_size;
+        
+        for (int n = 0; n < batch_size; ++n) {
+            const float* input_batch = input_data + n * channels * spatial_size;
+            float* output_batch = output_data + n * channels * spatial_size;
+            
+            for (int c = 0; c < channels; ++c) {
+                const float mean_val = running_mean_data[c];
+                const float var_val = running_var_data[c];
+                const float inv_std = 1.0f / std::sqrt(var_val + eps_);
+                const float scale = weight_data[c] * inv_std;
+                const float shift = bias_data[c] - mean_val * scale;
+                
+                const float* input_channel = input_batch + c * channel_stride;
+                float* output_channel = output_batch + c * channel_stride;
+                
+                // NEON vectorized computation
+                float32x4_t scale_vec = vdupq_n_f32(scale);
+                float32x4_t shift_vec = vdupq_n_f32(shift);
+                
+                int remaining = spatial_size;
+                int pos = 0;
+                
+                // Process in SIMD blocks
+                while (remaining >= SIMD_WIDTH) {
+                    float32x4_t input_vec = vld1q_f32(&input_channel[pos]);
+                    float32x4_t result = vmlaq_f32(shift_vec, input_vec, scale_vec);
+                    vst1q_f32(&output_channel[pos], result);
+                    
+                    pos += SIMD_WIDTH;
+                    remaining -= SIMD_WIDTH;
+                }
+                
+                // Handle remaining elements
+                while (remaining > 0) {
+                    output_channel[pos] = input_channel[pos] * scale + shift;
+                    ++pos;
+                    --remaining;
+                }
+            }
+        }
+#else
+        // Fallback with loop unrolling
         constexpr int SPATIAL_UNROLL = 8;
         const int spatial_size = height * width;
         const int channel_stride = spatial_size;
@@ -145,6 +241,7 @@ core::Tensor BatchNorm2D::forward(const core::Tensor& input, bool training) {
                 }
             }
         }
+#endif
     }
     
     return output;
@@ -210,6 +307,34 @@ void BatchNorm2D::initialize_parameters() {
     bias_.zero();
     running_mean_.zero();
     running_var_.fill(1.0f);
+}
+
+void BatchNorm2D::set_weight(const core::Tensor& weight) {
+    if (weight.shape() != weight_.shape()) {
+        throw std::runtime_error("Weight shape mismatch in BatchNorm2D::set_weight");
+    }
+    weight_ = weight;
+}
+
+void BatchNorm2D::set_bias(const core::Tensor& bias) {
+    if (bias.shape() != bias_.shape()) {
+        throw std::runtime_error("Bias shape mismatch in BatchNorm2D::set_bias");
+    }
+    bias_ = bias;
+}
+
+void BatchNorm2D::set_running_mean(const core::Tensor& running_mean) {
+    if (running_mean.shape() != running_mean_.shape()) {
+        throw std::runtime_error("Running mean shape mismatch in BatchNorm2D::set_running_mean");
+    }
+    running_mean_ = running_mean;
+}
+
+void BatchNorm2D::set_running_var(const core::Tensor& running_var) {
+    if (running_var.shape() != running_var_.shape()) {
+        throw std::runtime_error("Running variance shape mismatch in BatchNorm2D::set_running_var");
+    }
+    running_var_ = running_var;
 }
 
 }

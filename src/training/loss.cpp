@@ -75,6 +75,22 @@ std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::Detection
         int grid_w = bbox_shape[3];
         int num_classes = pred_cls.shape()[4];
         
+        core::Tensor target_bbox({batch_size, num_anchors, grid_h, grid_w, 4});
+        core::Tensor target_obj({batch_size, num_anchors, grid_h, grid_w, 1});
+        core::Tensor target_cls({batch_size, num_anchors, grid_h, grid_w, num_classes});
+        core::Tensor object_mask({batch_size, num_anchors, grid_h, grid_w, 1});
+        core::Tensor ignore_mask({batch_size, num_anchors, grid_h, grid_w, 1});
+        
+        target_bbox.zero();
+        target_obj.zero();
+        target_cls.zero();
+        object_mask.zero();
+        ignore_mask.zero();
+        
+        assign_targets_to_grid(targets, target_bbox, target_obj, target_cls, 
+                               object_mask, ignore_mask, anchors[scale], 
+                               grid_h, grid_w, scale);
+        
         int total_outputs = num_anchors * (5 + num_classes);
         core::Tensor grad({batch_size, total_outputs, grid_h, grid_w});
         grad.zero();
@@ -83,6 +99,11 @@ std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::Detection
         const float* bbox_data = pred_bbox.data_float();
         const float* obj_data = pred_obj.data_float();
         const float* cls_data = pred_cls.data_float();
+        const float* target_bbox_data = target_bbox.data_float();
+        const float* target_obj_data = target_obj.data_float();
+        const float* target_cls_data = target_cls.data_float();
+        const float* object_mask_data = object_mask.data_float();
+        const float* ignore_mask_data = ignore_mask.data_float();
         
         for (int n = 0; n < batch_size; ++n) {
             for (int a = 0; a < num_anchors; ++a) {
@@ -95,18 +116,42 @@ std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::Detection
                         int pred_idx = n * num_anchors * grid_h * grid_w +
                                        a * grid_h * grid_w + h * grid_w + w;
                         
-                        for (int i = 0; i < 4; ++i) {
-                            grad_data[base_idx + i] = 0.01f * (bbox_data[pred_idx * 4 + i] - 0.0f);
+                        if (object_mask_data[pred_idx] > 0.5f) {
+                            std::vector<float> pred_box(4);
+                            std::vector<float> target_box(4);
+                            
+                            for (int i = 0; i < 4; ++i) {
+                                pred_box[i] = bbox_data[pred_idx * 4 + i];
+                                target_box[i] = target_bbox_data[pred_idx * 4 + i];
+                            }
+                            
+                            float giou = compute_giou(pred_box, target_box);
+                            
+                            const float delta = 1e-5f;
+                            for (int i = 0; i < 4; ++i) {
+                                std::vector<float> pred_box_plus = pred_box;
+                                pred_box_plus[i] += delta;
+                                float giou_plus = compute_giou(pred_box_plus, target_box);
+                                
+                                float giou_grad = (giou_plus - giou) / delta;
+                                grad_data[base_idx + i] = -weights_.bbox * giou_grad;
+                            }
                         }
                         
-                        float obj_target = 0.0f;
-                        float obj_pred = sigmoid(obj_data[pred_idx]);
-                        grad_data[base_idx + 4] = weights_.objectness * (obj_pred - obj_target);
+                        if (ignore_mask_data[pred_idx] < 0.5f) {
+                            float obj_pred = sigmoid(obj_data[pred_idx]);
+                            float obj_target = target_obj_data[pred_idx];
+                            grad_data[base_idx + 4] = weights_.objectness * 
+                                (obj_pred - obj_target) * obj_pred * (1.0f - obj_pred);
+                        }
                         
-                        for (int c = 0; c < num_classes; ++c) {
-                            float cls_target = 0.0f;
-                            float cls_pred = sigmoid(cls_data[pred_idx * num_classes + c]);
-                            grad_data[base_idx + 5 + c] = weights_.classification * (cls_pred - cls_target);
+                        if (object_mask_data[pred_idx] > 0.5f) {
+                            for (int c = 0; c < num_classes; ++c) {
+                                float cls_pred = sigmoid(cls_data[pred_idx * num_classes + c]);
+                                float cls_target = target_cls_data[pred_idx * num_classes + c];
+                                grad_data[base_idx + 5 + c] = weights_.classification * 
+                                    (cls_pred - cls_target) * cls_pred * (1.0f - cls_pred);
+                            }
                         }
                     }
                 }
@@ -160,10 +205,16 @@ float YOLOLoss::compute_bbox_loss(const core::Tensor& pred_bbox,
     
     for (size_t i = 0; i < object_mask.size(); ++i) {
         if (mask_data[i] > 0.5f) {
+            std::vector<float> pred_box(4);
+            std::vector<float> target_box(4);
+            
             for (int j = 0; j < 4; ++j) {
-                float diff = pred_data[i * 4 + j] - target_data[i * 4 + j];
-                loss += diff * diff;
+                pred_box[j] = pred_data[i * 4 + j];
+                target_box[j] = target_data[i * 4 + j];
             }
+            
+            float giou = compute_giou(pred_box, target_box);
+            loss += (1.0f - giou);
             num_objects++;
         }
     }

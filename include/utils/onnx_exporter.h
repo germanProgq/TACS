@@ -87,9 +87,20 @@ private:
     
     bool write_onnx_file(const std::string& filepath);
     
+    enum class WireType : uint8_t {
+        VARINT = 0,
+        FIXED64 = 1,
+        LENGTH_DELIMITED = 2,
+        START_GROUP = 3,
+        END_GROUP = 4,
+        FIXED32 = 5
+    };
+    
     void write_protobuf_varint(std::vector<uint8_t>& buffer, uint64_t value);
     void write_protobuf_string(std::vector<uint8_t>& buffer, const std::string& str);
     void write_protobuf_bytes(std::vector<uint8_t>& buffer, const std::vector<uint8_t>& data);
+    void write_protobuf_field(std::vector<uint8_t>& buffer, uint32_t field_number, WireType wire_type);
+    void write_protobuf_fixed32(std::vector<uint8_t>& buffer, uint32_t value);
     
     int32_t get_onnx_data_type(core::DataType dtype);
 };

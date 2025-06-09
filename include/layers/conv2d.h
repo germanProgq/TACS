@@ -29,6 +29,10 @@ public:
     
     void zero_grad();
     void apply_gradients(float learning_rate);
+    
+    // Setter methods for model serialization
+    void set_weight(const core::Tensor& weight);
+    void set_bias(const core::Tensor& bias);
 
 private:
     int in_channels_;

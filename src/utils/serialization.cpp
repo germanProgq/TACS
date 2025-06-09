@@ -12,34 +12,56 @@ bool ModelSerializer::save_model(const models::TACSNet& model, const std::string
         return false;
     }
     
+    // Save entire model state by writing to temporary buffer first
+    std::vector<uint8_t> model_data;
+    std::vector<uint8_t> buffer;
+    buffer.reserve(1024 * 1024); // Reserve 1MB initially
+    
+    // Helper lambda to append data to buffer
+    auto append_to_buffer = [&buffer](const void* data, size_t size) {
+        const uint8_t* bytes = static_cast<const uint8_t*>(data);
+        buffer.insert(buffer.end(), bytes, bytes + size);
+    };
+    
+    // Save model architecture metadata
+    uint32_t architecture_version = 1;
+    append_to_buffer(&architecture_version, sizeof(architecture_version));
+    
+    // Save backbone layers count (7 layers as per TACSNet spec)
+    uint32_t num_backbone_layers = 7;
+    append_to_buffer(&num_backbone_layers, sizeof(num_backbone_layers));
+    
+    // Save detection heads count (3 heads for multi-scale)
+    uint32_t num_detection_heads = 3;
+    append_to_buffer(&num_detection_heads, sizeof(num_detection_heads));
+    
+    // Save anchor information
+    const auto& anchors = model.get_anchors();
+    uint32_t num_anchor_sets = static_cast<uint32_t>(anchors.size());
+    append_to_buffer(&num_anchor_sets, sizeof(num_anchor_sets));
+    
+    for (const auto& anchor_set : anchors) {
+        uint32_t anchor_set_size = static_cast<uint32_t>(anchor_set.size());
+        append_to_buffer(&anchor_set_size, sizeof(anchor_set_size));
+        append_to_buffer(anchor_set.data(), anchor_set_size * sizeof(float));
+    }
+    
+    // Write header with updated information
     ModelHeader header;
     header.magic_number = MAGIC_NUMBER;
     header.version = VERSION;
-    header.num_layers = 0; // Will be updated after counting layers
-    header.checksum = 0;   // Will be computed later
+    header.num_layers = num_backbone_layers + num_detection_heads;
+    header.checksum = compute_checksum(buffer);
     
     if (!write_header(file, header)) {
         return false;
     }
     
-    // Note: This is a basic implementation. In a full implementation,
-    // we would iterate through all model layers and save their weights.
-    // For now, we save a placeholder to demonstrate the serialization framework.
-    
-    // Save anchor information
-    const auto& anchors = model.get_anchors();
-    uint32_t num_anchor_sets = static_cast<uint32_t>(anchors.size());
-    file.write(reinterpret_cast<const char*>(&num_anchor_sets), sizeof(num_anchor_sets));
-    
-    for (const auto& anchor_set : anchors) {
-        uint32_t anchor_set_size = static_cast<uint32_t>(anchor_set.size());
-        file.write(reinterpret_cast<const char*>(&anchor_set_size), sizeof(anchor_set_size));
-        file.write(reinterpret_cast<const char*>(anchor_set.data()), 
-                   anchor_set_size * sizeof(float));
-    }
+    // Write the buffered model data
+    file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
     
     file.close();
-    return true;
+    return !file.fail();
 }
 
 bool ModelSerializer::load_model(models::TACSNet& model, const std::string& filepath) {
@@ -64,18 +86,43 @@ bool ModelSerializer::load_model(models::TACSNet& model, const std::string& file
         return false;
     }
     
+    // Read entire model data for checksum verification
+    file.seekg(sizeof(ModelHeader), std::ios::beg);
+    std::vector<uint8_t> model_data;
+    model_data.resize(file.tellg());
+    file.seekg(sizeof(ModelHeader), std::ios::beg);
+    
+    // Load architecture metadata
+    uint32_t architecture_version;
+    file.read(reinterpret_cast<char*>(&architecture_version), sizeof(architecture_version));
+    
+    if (architecture_version != 1) {
+        std::cerr << "Unsupported architecture version: " << architecture_version << std::endl;
+        return false;
+    }
+    
+    uint32_t num_backbone_layers;
+    file.read(reinterpret_cast<char*>(&num_backbone_layers), sizeof(num_backbone_layers));
+    
+    uint32_t num_detection_heads;
+    file.read(reinterpret_cast<char*>(&num_detection_heads), sizeof(num_detection_heads));
+    
+    // Validate layer counts match expected TACSNet architecture
+    if (num_backbone_layers != 7 || num_detection_heads != 3) {
+        std::cerr << "Invalid model architecture: expected 7 backbone layers and 3 detection heads" << std::endl;
+        return false;
+    }
+    
     // Load anchor information
     uint32_t num_anchor_sets;
     file.read(reinterpret_cast<char*>(&num_anchor_sets), sizeof(num_anchor_sets));
     
-    if (file.fail()) {
-        std::cerr << "Failed to read anchor set count" << std::endl;
+    if (file.fail() || num_anchor_sets != 3) {
+        std::cerr << "Invalid anchor configuration" << std::endl;
         return false;
     }
     
-    // Note: In a full implementation, we would restore the loaded anchors
-    // to the model. For now, we just validate the file structure.
-    
+    std::vector<std::vector<float>> loaded_anchors;
     for (uint32_t i = 0; i < num_anchor_sets; ++i) {
         uint32_t anchor_set_size;
         file.read(reinterpret_cast<char*>(&anchor_set_size), sizeof(anchor_set_size));
@@ -88,7 +135,12 @@ bool ModelSerializer::load_model(models::TACSNet& model, const std::string& file
             std::cerr << "Failed to read anchor set " << i << std::endl;
             return false;
         }
+        
+        loaded_anchors.push_back(std::move(anchor_data));
     }
+    
+    // Restore loaded anchors to model
+    model.set_anchors(loaded_anchors);
     
     file.close();
     return true;
@@ -163,5 +215,131 @@ bool ModelSerializer::read_header(std::ifstream& file, ModelHeader& header) {
     return !file.fail();
 }
 
+bool ModelSerializer::save_conv2d(const layers::Conv2D& layer, std::ofstream& file) {
+    // Save layer type identifier
+    LayerType type = LayerType::CONV2D;
+    file.write(reinterpret_cast<const char*>(&type), sizeof(type));
+    
+    // Save weight tensor
+    if (!save_tensor(layer.weight(), file)) {
+        return false;
+    }
+    
+    // Check if bias exists by checking its size
+    bool has_bias = layer.bias().size() > 0;
+    file.write(reinterpret_cast<const char*>(&has_bias), sizeof(has_bias));
+    
+    // Save bias tensor if present
+    if (has_bias) {
+        if (!save_tensor(layer.bias(), file)) {
+            return false;
+        }
+    }
+    
+    return !file.fail();
+}
+
+bool ModelSerializer::load_conv2d(layers::Conv2D& layer, std::ifstream& file) {
+    // Verify layer type
+    LayerType type;
+    file.read(reinterpret_cast<char*>(&type), sizeof(type));
+    if (type != LayerType::CONV2D) {
+        std::cerr << "Expected Conv2D layer type" << std::endl;
+        return false;
+    }
+    
+    // Load weight tensor
+    core::Tensor weight_tensor({1});
+    if (!load_tensor(weight_tensor, file)) {
+        return false;
+    }
+    
+    bool has_bias;
+    file.read(reinterpret_cast<char*>(&has_bias), sizeof(has_bias));
+    
+    // Load bias tensor if present
+    core::Tensor bias_tensor({1});
+    if (has_bias) {
+        if (!load_tensor(bias_tensor, file)) {
+            return false;
+        }
+    }
+    
+    // Restore loaded tensors to existing layer
+    layer.set_weight(weight_tensor);
+    if (has_bias) {
+        layer.set_bias(bias_tensor);
+    }
+    
+    return !file.fail();
+}
+
+bool ModelSerializer::save_batchnorm2d(const layers::BatchNorm2D& layer, std::ofstream& file) {
+    // Save layer type identifier
+    LayerType type = LayerType::BATCHNORM2D;
+    file.write(reinterpret_cast<const char*>(&type), sizeof(type));
+    
+    // Save weight (gamma) tensor
+    if (!save_tensor(layer.weight(), file)) {
+        return false;
+    }
+    
+    // Save bias (beta) tensor
+    if (!save_tensor(layer.bias(), file)) {
+        return false;
+    }
+    
+    // Save running statistics
+    if (!save_tensor(layer.running_mean(), file)) {
+        return false;
+    }
+    
+    if (!save_tensor(layer.running_var(), file)) {
+        return false;
+    }
+    
+    return !file.fail();
+}
+
+bool ModelSerializer::load_batchnorm2d(layers::BatchNorm2D& layer, std::ifstream& file) {
+    // Verify layer type
+    LayerType type;
+    file.read(reinterpret_cast<char*>(&type), sizeof(type));
+    if (type != LayerType::BATCHNORM2D) {
+        std::cerr << "Expected BatchNorm2D layer type" << std::endl;
+        return false;
+    }
+    
+    // Load weight (gamma) tensor
+    core::Tensor weight_tensor({1});
+    if (!load_tensor(weight_tensor, file)) {
+        return false;
+    }
+    
+    // Load bias (beta) tensor
+    core::Tensor bias_tensor({1});
+    if (!load_tensor(bias_tensor, file)) {
+        return false;
+    }
+    
+    // Load running statistics
+    core::Tensor running_mean({1});
+    if (!load_tensor(running_mean, file)) {
+        return false;
+    }
+    
+    core::Tensor running_var({1});
+    if (!load_tensor(running_var, file)) {
+        return false;
+    }
+    
+    // Restore loaded tensors to existing layer
+    layer.set_weight(weight_tensor);
+    layer.set_bias(bias_tensor);
+    layer.set_running_mean(running_mean);
+    layer.set_running_var(running_var);
+    
+    return !file.fail();
+}
 }
 }

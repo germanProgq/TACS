@@ -137,5 +137,22 @@ void Conv2D::initialize_weights() {
     }
 }
 
+void Conv2D::set_weight(const core::Tensor& weight) {
+    if (weight.shape() != weight_.shape()) {
+        throw std::runtime_error("Weight shape mismatch in Conv2D::set_weight");
+    }
+    weight_ = weight;
+}
+
+void Conv2D::set_bias(const core::Tensor& bias) {
+    if (!has_bias_) {
+        throw std::runtime_error("Cannot set bias on Conv2D layer created without bias");
+    }
+    if (bias.shape() != bias_.shape()) {
+        throw std::runtime_error("Bias shape mismatch in Conv2D::set_bias");
+    }
+    bias_ = bias;
+}
+
 }
 }

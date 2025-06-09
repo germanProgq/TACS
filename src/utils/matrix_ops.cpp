@@ -1,6 +1,8 @@
 #include "utils/matrix_ops.h"
 #include <cstring>
 #include <algorithm>
+#include <thread>
+#include <vector>
 
 namespace tacs {
 namespace utils {
@@ -170,11 +172,116 @@ void MatrixOps::quantize_fp32_to_int8(const core::Tensor& input, core::Tensor& o
     
     const float* input_data = input.data_float();
     int8_t* output_data = output.data_int8();
+    const size_t size = input.size();
     
-    for (size_t i = 0; i < input.size(); ++i) {
-        int quantized = static_cast<int>(std::round(input_data[i] / scale + zero_point));
-        output_data[i] = static_cast<int8_t>(std::clamp(quantized, -128, 127));
+#ifdef __AVX2__
+    // SIMD-optimized INT8 quantization with AVX2
+    constexpr int SIMD_WIDTH = 8;
+    __m256 scale_vec = _mm256_set1_ps(1.0f / scale);
+    __m256 zero_point_vec = _mm256_set1_ps(static_cast<float>(zero_point));
+    __m256i min_val = _mm256_set1_epi32(-128);
+    __m256i max_val = _mm256_set1_epi32(127);
+    
+    size_t remaining = size;
+    size_t pos = 0;
+    
+    // Process in SIMD blocks
+    while (remaining >= SIMD_WIDTH) {
+        __m256 input_vec = _mm256_loadu_ps(&input_data[pos]);
+        __m256 scaled = _mm256_mul_ps(input_vec, scale_vec);
+        __m256 shifted = _mm256_add_ps(scaled, zero_point_vec);
+        __m256i rounded = _mm256_cvtps_epi32(shifted);
+        
+        // Clamp to INT8 range
+        rounded = _mm256_max_epi32(rounded, min_val);
+        rounded = _mm256_min_epi32(rounded, max_val);
+        
+        // Pack to INT8
+        __m128i lower = _mm256_extracti128_si256(rounded, 0);
+        __m128i upper = _mm256_extracti128_si256(rounded, 1);
+        __m128i packed = _mm_packs_epi32(lower, upper);
+        __m128i packed_8 = _mm_packs_epi16(packed, packed);
+        
+        // Store 8 INT8 values
+        _mm_storel_epi64(reinterpret_cast<__m128i*>(&output_data[pos]), packed_8);
+        
+        pos += SIMD_WIDTH;
+        remaining -= SIMD_WIDTH;
     }
+    
+    // Handle remaining elements
+    while (remaining > 0) {
+        int quantized = static_cast<int>(std::round(input_data[pos] / scale + zero_point));
+        output_data[pos] = static_cast<int8_t>(std::clamp(quantized, -128, 127));
+        ++pos;
+        --remaining;
+    }
+#elif defined(__ARM_NEON)
+    // SIMD-optimized INT8 quantization with NEON
+    constexpr int SIMD_WIDTH = 4;
+    float32x4_t scale_vec = vdupq_n_f32(1.0f / scale);
+    float32x4_t zero_point_vec = vdupq_n_f32(static_cast<float>(zero_point));
+    
+    size_t remaining = size;
+    size_t pos = 0;
+    
+    // Process in SIMD blocks
+    while (remaining >= SIMD_WIDTH) {
+        float32x4_t input_vec = vld1q_f32(&input_data[pos]);
+        float32x4_t scaled = vmulq_f32(input_vec, scale_vec);
+        float32x4_t shifted = vaddq_f32(scaled, zero_point_vec);
+        int32x4_t rounded = vcvtnq_s32_f32(shifted);
+        
+        // Clamp to INT8 range
+        int32x4_t clamped = vmaxq_s32(rounded, vdupq_n_s32(-128));
+        clamped = vminq_s32(clamped, vdupq_n_s32(127));
+        
+        // Extract and store INT8 values
+        output_data[pos + 0] = static_cast<int8_t>(vgetq_lane_s32(clamped, 0));
+        output_data[pos + 1] = static_cast<int8_t>(vgetq_lane_s32(clamped, 1));
+        output_data[pos + 2] = static_cast<int8_t>(vgetq_lane_s32(clamped, 2));
+        output_data[pos + 3] = static_cast<int8_t>(vgetq_lane_s32(clamped, 3));
+        
+        pos += SIMD_WIDTH;
+        remaining -= SIMD_WIDTH;
+    }
+    
+    // Handle remaining elements
+    while (remaining > 0) {
+        int quantized = static_cast<int>(std::round(input_data[pos] / scale + zero_point));
+        output_data[pos] = static_cast<int8_t>(std::clamp(quantized, -128, 127));
+        ++pos;
+        --remaining;
+    }
+#else
+    // Optimized scalar implementation with loop unrolling
+    constexpr int UNROLL_FACTOR = 8;
+    const float inv_scale = 1.0f / scale;
+    const float fp_zero_point = static_cast<float>(zero_point);
+    
+    size_t remaining = size;
+    size_t pos = 0;
+    
+    // Process in unrolled blocks
+    while (remaining >= UNROLL_FACTOR) {
+        for (int i = 0; i < UNROLL_FACTOR; ++i) {
+            float scaled = input_data[pos + i] * inv_scale + fp_zero_point;
+            int quantized = static_cast<int>(std::round(scaled));
+            output_data[pos + i] = static_cast<int8_t>(std::clamp(quantized, -128, 127));
+        }
+        
+        pos += UNROLL_FACTOR;
+        remaining -= UNROLL_FACTOR;
+    }
+    
+    // Handle remaining elements
+    while (remaining > 0) {
+        int quantized = static_cast<int>(std::round(input_data[pos] / scale + zero_point));
+        output_data[pos] = static_cast<int8_t>(std::clamp(quantized, -128, 127));
+        ++pos;
+        --remaining;
+    }
+#endif
 }
 
 void MatrixOps::quantize_fp32_to_fp16(const core::Tensor& input, core::Tensor& output) {
@@ -188,28 +295,138 @@ void MatrixOps::quantize_fp32_to_fp16(const core::Tensor& input, core::Tensor& o
     
     const float* input_data = input.data_float();
     uint16_t* output_data = static_cast<uint16_t*>(output.data());
+    const size_t size = input.size();
     
-    for (size_t i = 0; i < input.size(); ++i) {
-        uint32_t f32_bits = *reinterpret_cast<const uint32_t*>(&input_data[i]);
+#ifdef __AVX2__
+    // SIMD-optimized FP16 conversion with AVX2 + F16C
+    #ifdef __F16C__
+    constexpr int SIMD_WIDTH = 8;
+    size_t remaining = size;
+    size_t pos = 0;
+    
+    // Process in SIMD blocks using F16C intrinsics
+    while (remaining >= SIMD_WIDTH) {
+        __m256 input_vec = _mm256_loadu_ps(&input_data[pos]);
+        __m128i fp16_vec = _mm256_cvtps_ph(input_vec, _MM_FROUND_TO_NEAREST_INT);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(&output_data[pos]), fp16_vec);
+        
+        pos += SIMD_WIDTH;
+        remaining -= SIMD_WIDTH;
+    }
+    
+    // Handle remaining elements
+    while (remaining > 0) {
+        __m128 single = _mm_load_ss(&input_data[pos]);
+        __m128i fp16_single = _mm_cvtps_ph(single, _MM_FROUND_TO_NEAREST_INT);
+        output_data[pos] = static_cast<uint16_t>(_mm_extract_epi16(fp16_single, 0));
+        ++pos;
+        --remaining;
+    }
+    #else
+    // Manual conversion when F16C is not available
+    goto manual_conversion;
+    #endif
+#elif defined(__ARM_NEON) && defined(__ARM_FP16_FORMAT_IEEE)
+    // SIMD-optimized FP16 conversion with NEON
+    constexpr int SIMD_WIDTH = 4;
+    size_t remaining = size;
+    size_t pos = 0;
+    
+    // Process in SIMD blocks
+    while (remaining >= SIMD_WIDTH) {
+        float32x4_t input_vec = vld1q_f32(&input_data[pos]);
+        float16x4_t fp16_vec = vcvt_f16_f32(input_vec);
+        vst1_f16(reinterpret_cast<__fp16*>(&output_data[pos]), fp16_vec);
+        
+        pos += SIMD_WIDTH;
+        remaining -= SIMD_WIDTH;
+    }
+    
+    // Handle remaining elements
+    while (remaining > 0) {
+        // Manual conversion for remaining elements
+        uint32_t f32_bits = *reinterpret_cast<const uint32_t*>(&input_data[pos]);
         uint16_t sign = (f32_bits >> 16) & 0x8000;
         uint32_t exp = (f32_bits >> 23) & 0xff;
         uint32_t mantissa = f32_bits & 0x7fffff;
         
         if (exp == 0) {
-            output_data[i] = sign;
+            output_data[pos] = sign;
         } else if (exp == 0xff) {
-            output_data[i] = sign | 0x7c00 | (mantissa ? 0x0200 : 0);
+            output_data[pos] = sign | 0x7c00 | (mantissa ? 0x0200 : 0);
         } else {
             int new_exp = static_cast<int>(exp) - 127 + 15;
             if (new_exp >= 31) {
-                output_data[i] = sign | 0x7c00;
+                output_data[pos] = sign | 0x7c00;
             } else if (new_exp <= 0) {
-                output_data[i] = sign;
+                output_data[pos] = sign;
             } else {
-                output_data[i] = sign | (new_exp << 10) | (mantissa >> 13);
+                output_data[pos] = sign | (new_exp << 10) | (mantissa >> 13);
             }
         }
+        ++pos;
+        --remaining;
     }
+#else
+manual_conversion:
+    // Optimized manual conversion with loop unrolling
+    constexpr int UNROLL_FACTOR = 8;
+    size_t remaining = size;
+    size_t pos = 0;
+    
+    // Process in unrolled blocks
+    while (remaining >= UNROLL_FACTOR) {
+        for (int i = 0; i < UNROLL_FACTOR; ++i) {
+            uint32_t f32_bits = *reinterpret_cast<const uint32_t*>(&input_data[pos + i]);
+            uint16_t sign = (f32_bits >> 16) & 0x8000;
+            uint32_t exp = (f32_bits >> 23) & 0xff;
+            uint32_t mantissa = f32_bits & 0x7fffff;
+            
+            if (exp == 0) {
+                output_data[pos + i] = sign;
+            } else if (exp == 0xff) {
+                output_data[pos + i] = sign | 0x7c00 | (mantissa ? 0x0200 : 0);
+            } else {
+                int new_exp = static_cast<int>(exp) - 127 + 15;
+                if (new_exp >= 31) {
+                    output_data[pos + i] = sign | 0x7c00;
+                } else if (new_exp <= 0) {
+                    output_data[pos + i] = sign;
+                } else {
+                    output_data[pos + i] = sign | (new_exp << 10) | (mantissa >> 13);
+                }
+            }
+        }
+        
+        pos += UNROLL_FACTOR;
+        remaining -= UNROLL_FACTOR;
+    }
+    
+    // Handle remaining elements
+    while (remaining > 0) {
+        uint32_t f32_bits = *reinterpret_cast<const uint32_t*>(&input_data[pos]);
+        uint16_t sign = (f32_bits >> 16) & 0x8000;
+        uint32_t exp = (f32_bits >> 23) & 0xff;
+        uint32_t mantissa = f32_bits & 0x7fffff;
+        
+        if (exp == 0) {
+            output_data[pos] = sign;
+        } else if (exp == 0xff) {
+            output_data[pos] = sign | 0x7c00 | (mantissa ? 0x0200 : 0);
+        } else {
+            int new_exp = static_cast<int>(exp) - 127 + 15;
+            if (new_exp >= 31) {
+                output_data[pos] = sign | 0x7c00;
+            } else if (new_exp <= 0) {
+                output_data[pos] = sign;
+            } else {
+                output_data[pos] = sign | (new_exp << 10) | (mantissa >> 13);
+            }
+        }
+        ++pos;
+        --remaining;
+    }
+#endif
 }
 
 void MatrixOps::gemm_naive(const float* a, const float* b, float* c,
@@ -852,11 +1069,68 @@ void MatrixOps::conv2d_parallel(const float* input, const float* weight, float* 
                                int input_h, int input_w, int output_h, int output_w,
                                int kernel_h, int kernel_w, int stride_h, int stride_w,
                                int pad_h, int pad_w) {
-    // For now, use the optimized single-threaded version
-    // TODO: Implement proper thread pool when std::thread is available
-    conv2d_generic_optimized(input, weight, output, batch_size, in_channels, out_channels,
-                            input_h, input_w, output_h, output_w,
-                            kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w);
+    // Get number of available threads
+    const int num_threads = std::thread::hardware_concurrency();
+    if (num_threads <= 1) {
+        // Fallback to single-threaded version
+        conv2d_generic_optimized(input, weight, output, batch_size, in_channels, out_channels,
+                                input_h, input_w, output_h, output_w,
+                                kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w);
+        return;
+    }
+    
+    // Clear output tensor
+    std::fill(output, output + batch_size * out_channels * output_h * output_w, 0.0f);
+    
+    // Parallel processing across output channels
+    std::vector<std::thread> threads;
+    const int channels_per_thread = (out_channels + num_threads - 1) / num_threads;
+    
+    for (int t = 0; t < num_threads; ++t) {
+        const int start_channel = t * channels_per_thread;
+        const int end_channel = std::min(start_channel + channels_per_thread, out_channels);
+        
+        if (start_channel >= out_channels) break;
+        
+        threads.emplace_back([=]() {
+            // Process assigned output channels
+            for (int n = 0; n < batch_size; ++n) {
+                for (int oc = start_channel; oc < end_channel; ++oc) {
+                    for (int oh = 0; oh < output_h; ++oh) {
+                        for (int ow = 0; ow < output_w; ++ow) {
+                            float sum = 0.0f;
+                            
+                            for (int ic = 0; ic < in_channels; ++ic) {
+                                for (int kh = 0; kh < kernel_h; ++kh) {
+                                    for (int kw = 0; kw < kernel_w; ++kw) {
+                                        int ih = oh * stride_h - pad_h + kh;
+                                        int iw = ow * stride_w - pad_w + kw;
+                                        
+                                        if (ih >= 0 && ih < input_h && iw >= 0 && iw < input_w) {
+                                            int input_idx = n * in_channels * input_h * input_w +
+                                                           ic * input_h * input_w + ih * input_w + iw;
+                                            int weight_idx = oc * in_channels * kernel_h * kernel_w +
+                                                            ic * kernel_h * kernel_w + kh * kernel_w + kw;
+                                            sum += input[input_idx] * weight[weight_idx];
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            int output_idx = n * out_channels * output_h * output_w +
+                                            oc * output_h * output_w + oh * output_w + ow;
+                            output[output_idx] = sum;
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Wait for all threads to complete
+    for (auto& thread : threads) {
+        thread.join();
+    }
 }
 
 // Memory prefetching utilities for cache optimization

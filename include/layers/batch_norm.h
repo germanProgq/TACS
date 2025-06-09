@@ -30,6 +30,12 @@ public:
     void zero_grad();
     void apply_gradients(float learning_rate);
     void set_training(bool training) { training_ = training; }
+    
+    // Setter methods for model serialization
+    void set_weight(const core::Tensor& weight);
+    void set_bias(const core::Tensor& bias);
+    void set_running_mean(const core::Tensor& running_mean);
+    void set_running_var(const core::Tensor& running_var);
 
 private:
     int num_features_;
