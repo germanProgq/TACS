@@ -49,6 +49,10 @@ set(SOURCES
     src/utils/serialization.cpp
     src/utils/onnx_exporter.cpp
     src/utils/metrics.cpp
+    src/utils/nms.cpp
+    src/utils/quantization.cpp
+    src/utils/batch_inference.cpp
+    src/utils/image_decoder.cpp
 )
 
 set(HEADERS
@@ -69,7 +73,9 @@ set(HEADERS
 
 add_executable(tacs src/main.cpp ${SOURCES})
 add_executable(phase1_validation phase1_validation.cpp ${SOURCES})
+add_executable(phase2_validation phase2_validation.cpp ${SOURCES})
 add_executable(performance_test performance_test.cpp ${SOURCES})
+add_executable(train_tacsnet src/training/train_tacsnet.cpp ${SOURCES})
 
 find_package(GTest QUIET)
 if(GTest_FOUND)

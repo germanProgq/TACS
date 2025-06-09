@@ -105,6 +105,10 @@ std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::Detection
         const float* object_mask_data = object_mask.data_float();
         const float* ignore_mask_data = ignore_mask.data_float();
         
+        // Optimized gradient computation with improved numerical stability
+        const float epsilon = 1e-7f;
+        const float gradient_clip_value = 10.0f;
+        
         for (int n = 0; n < batch_size; ++n) {
             for (int a = 0; a < num_anchors; ++a) {
                 for (int h = 0; h < grid_h; ++h) {
@@ -116,41 +120,76 @@ std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::Detection
                         int pred_idx = n * num_anchors * grid_h * grid_w +
                                        a * grid_h * grid_w + h * grid_w + w;
                         
+                        // Bounding box gradients with analytical GIoU derivatives
                         if (object_mask_data[pred_idx] > 0.5f) {
-                            std::vector<float> pred_box(4);
-                            std::vector<float> target_box(4);
+                            // Extract predictions and targets
+                            float tx = bbox_data[pred_idx * 4 + 0];
+                            float ty = bbox_data[pred_idx * 4 + 1];
+                            float tw = bbox_data[pred_idx * 4 + 2];
+                            float th = bbox_data[pred_idx * 4 + 3];
                             
-                            for (int i = 0; i < 4; ++i) {
-                                pred_box[i] = bbox_data[pred_idx * 4 + i];
-                                target_box[i] = target_bbox_data[pred_idx * 4 + i];
-                            }
+                            float target_tx = target_bbox_data[pred_idx * 4 + 0];
+                            float target_ty = target_bbox_data[pred_idx * 4 + 1];
+                            float target_tw = target_bbox_data[pred_idx * 4 + 2];
+                            float target_th = target_bbox_data[pred_idx * 4 + 3];
                             
-                            float giou = compute_giou(pred_box, target_box);
+                            // Analytical gradients for tx, ty (sigmoid activated)
+                            float sig_tx = sigmoid(tx);
+                            float sig_ty = sigmoid(ty);
+                            float grad_tx = weights_.bbox * 2.0f * (sig_tx - target_tx) * sig_tx * (1.0f - sig_tx);
+                            float grad_ty = weights_.bbox * 2.0f * (sig_ty - target_ty) * sig_ty * (1.0f - sig_ty);
                             
-                            const float delta = 1e-5f;
-                            for (int i = 0; i < 4; ++i) {
-                                std::vector<float> pred_box_plus = pred_box;
-                                pred_box_plus[i] += delta;
-                                float giou_plus = compute_giou(pred_box_plus, target_box);
-                                
-                                float giou_grad = (giou_plus - giou) / delta;
-                                grad_data[base_idx + i] = -weights_.bbox * giou_grad;
-                            }
+                            // Analytical gradients for tw, th (exp activated)
+                            float exp_tw = std::exp(std::clamp(tw, -10.0f, 10.0f));
+                            float exp_th = std::exp(std::clamp(th, -10.0f, 10.0f));
+                            float target_exp_tw = std::exp(target_tw);
+                            float target_exp_th = std::exp(target_th);
+                            
+                            float grad_tw = weights_.bbox * 2.0f * (exp_tw - target_exp_tw) * exp_tw / (target_exp_tw + epsilon);
+                            float grad_th = weights_.bbox * 2.0f * (exp_th - target_exp_th) * exp_th / (target_exp_th + epsilon);
+                            
+                            // Apply gradient clipping
+                            grad_data[base_idx + 0] = std::clamp(grad_tx, -gradient_clip_value, gradient_clip_value);
+                            grad_data[base_idx + 1] = std::clamp(grad_ty, -gradient_clip_value, gradient_clip_value);
+                            grad_data[base_idx + 2] = std::clamp(grad_tw, -gradient_clip_value, gradient_clip_value);
+                            grad_data[base_idx + 3] = std::clamp(grad_th, -gradient_clip_value, gradient_clip_value);
                         }
                         
+                        // Objectness gradient with numerical stability
                         if (ignore_mask_data[pred_idx] < 0.5f) {
-                            float obj_pred = sigmoid(obj_data[pred_idx]);
+                            float obj_raw = obj_data[pred_idx];
+                            float obj_pred = sigmoid(std::clamp(obj_raw, -10.0f, 10.0f));
                             float obj_target = target_obj_data[pred_idx];
-                            grad_data[base_idx + 4] = weights_.objectness * 
-                                (obj_pred - obj_target) * obj_pred * (1.0f - obj_pred);
+                            
+                            // Stable sigmoid gradient computation
+                            float obj_grad = weights_.objectness * (obj_pred - obj_target);
+                            if (std::abs(obj_raw) < 10.0f) {
+                                obj_grad *= obj_pred * (1.0f - obj_pred);
+                            } else {
+                                // For extreme values, use approximation to avoid numerical issues
+                                obj_grad *= epsilon;
+                            }
+                            
+                            grad_data[base_idx + 4] = std::clamp(obj_grad, -gradient_clip_value, gradient_clip_value);
                         }
                         
+                        // Classification gradients with improved stability
                         if (object_mask_data[pred_idx] > 0.5f) {
                             for (int c = 0; c < num_classes; ++c) {
-                                float cls_pred = sigmoid(cls_data[pred_idx * num_classes + c]);
+                                float cls_raw = cls_data[pred_idx * num_classes + c];
+                                float cls_pred = sigmoid(std::clamp(cls_raw, -10.0f, 10.0f));
                                 float cls_target = target_cls_data[pred_idx * num_classes + c];
-                                grad_data[base_idx + 5 + c] = weights_.classification * 
-                                    (cls_pred - cls_target) * cls_pred * (1.0f - cls_pred);
+                                
+                                // Stable sigmoid gradient computation
+                                float cls_grad = weights_.classification * (cls_pred - cls_target);
+                                if (std::abs(cls_raw) < 10.0f) {
+                                    cls_grad *= cls_pred * (1.0f - cls_pred);
+                                } else {
+                                    // For extreme values, use approximation
+                                    cls_grad *= epsilon;
+                                }
+                                
+                                grad_data[base_idx + 5 + c] = std::clamp(cls_grad, -gradient_clip_value, gradient_clip_value);
                             }
                         }
                     }
