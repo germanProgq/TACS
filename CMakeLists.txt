@@ -42,6 +42,8 @@ set(SOURCES
     src/layers/batch_norm.cpp
     src/layers/leaky_relu.cpp
     src/models/tacsnet.cpp
+    src/models/tacsnet_optimized.cpp
+    src/models/tacsnet_int8.cpp
     src/training/optimizer.cpp
     src/training/loss.cpp
     src/data/data_loader.cpp

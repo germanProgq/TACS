@@ -1,4 +1,5 @@
 #include "utils/batch_inference.h"
+#include "models/tacsnet_optimized.h"
 #include <chrono>
 #include <algorithm>
 #include <numeric>
@@ -11,6 +12,13 @@ namespace utils {
 
 BatchInference::BatchInference(std::shared_ptr<models::TACSNet> model, const BatchConfig& config)
     : model_(model), config_(config) {
+    // Configure NMS
+    NMSConfig nms_config;
+    nms_config.iou_threshold = 0.45f;
+    nms_config.class_confidence_thresholds = {0.5f, 0.4f, 0.4f}; // Cars, Pedestrians, Cyclists
+    nms_config.max_detections = 100;
+    nms_ = NonMaxSuppression(nms_config);
+    
     // Pre-allocate tensor pool
     for (int i = 0; i < config_.max_batch_size * 2; ++i) {
         tensor_pool_.emplace_back(std::vector<int>{1, 3, 416, 416});
@@ -38,7 +46,18 @@ std::vector<std::vector<NMSDetection>> BatchInference::process_batch(const std::
     
     // Run inference
     model_->set_training(false);
-    auto outputs = model_->forward(batch_input);
+    std::vector<models::DetectionOutput> outputs;
+    
+    // Check if we have an optimized model
+    auto optimized_model = std::dynamic_pointer_cast<models::TACSNetOptimized>(model_);
+    if (config_.use_int8) {
+        outputs = model_->forward_int8(batch_input);
+    } else if (optimized_model && !config_.use_fp16) {
+        optimized_model->enable_optimizations();
+        outputs = optimized_model->forward_optimized(batch_input);
+    } else {
+        outputs = model_->forward(batch_input, false);
+    }
     
     // Split outputs and apply NMS
     std::vector<std::vector<NMSDetection>> results;
