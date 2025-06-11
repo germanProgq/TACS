@@ -43,18 +43,28 @@ This project contains a clean validation and testing structure:
 - Serialization and data handling
 
 ## Build and Run
-**Note**: CMake and Make files have been removed. To build and run the programs, you'll need to set up your own build system or compile manually:
+The project includes a complete CMake build system for easy compilation:
 
 ```bash
-# Example manual compilation (adjust compiler flags as needed):
-g++ -std=c++17 -O3 -I include phase1_validation.cpp src/**/*.cpp -o phase1_validation
-g++ -std=c++17 -O3 -I include phase2_validation.cpp src/**/*.cpp -o phase2_validation
-g++ -std=c++17 -O3 -I include tests/test_*.cpp src/**/*.cpp -lgtest -o tests/run_tests
+# Configure and build all programs
+cmake .
+make
 
-# Then run:
+# Or clean and rebuild
+make clean
+make
+
+# Run the validation programs
 ./phase1_validation
-./phase2_validation  
+./phase2_validation
+
+# Run unit tests
 ./tests/run_tests
+
+# Alternative: build specific targets
+make phase1_validation
+make phase2_validation
+make run_tests
 ```
 
 ## Project Structure
