@@ -57,6 +57,9 @@ set(SOURCES
     src/utils/quantization.cpp
     src/utils/batch_inference.cpp
     src/utils/image_decoder.cpp
+    src/tracking/kalman_filter.cpp
+    src/tracking/hungarian_algorithm.cpp
+    src/tracking/memory_tracker.cpp
 )
 
 set(HEADERS
@@ -73,10 +76,14 @@ set(HEADERS
     include/utils/serialization.h
     include/utils/onnx_exporter.h
     include/utils/metrics.h
+    include/tracking/kalman_filter.h
+    include/tracking/hungarian_algorithm.h
+    include/tracking/memory_tracker.h
 )
 
 add_executable(phase1_validation phase1_validation.cpp ${SOURCES})
 add_executable(phase2_validation phase2_validation.cpp ${SOURCES})
+add_executable(phase3_validation phase3_validation.cpp ${SOURCES})
 
 find_package(GTest QUIET)
 if(GTest_FOUND)

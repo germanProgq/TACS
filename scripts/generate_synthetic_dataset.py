@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Generate synthetic traffic dataset for TACSNet training.
-Creates realistic annotated images with cars, pedestrians, and cyclists.
-Designed for recursive training with consistent patterns.
+Generate synthetic 3D traffic dataset for TACSNet training.
+Creates realistic annotated images with 3D models, multiple viewpoints,
+and realistic street scenes from various camera angles.
 """
 
 import os
@@ -13,6 +13,7 @@ import random
 import argparse
 import hashlib
 from datetime import datetime
+import math
 
 class SyntheticTrafficGenerator:
     def __init__(self, output_dir, num_train=1000, num_val=200, seed=None):
@@ -28,31 +29,103 @@ class SyntheticTrafficGenerator:
         random.seed(seed)
         np.random.seed(seed)
         
-        # Class definitions with realistic properties
+        # 3D camera parameters for multiple viewpoints - focused on capturing objects
+        self.camera_configs = [
+            {
+                'name': 'intersection_high',
+                'position': (0, -15, 8),  # x, y, z in meters - closer and lower
+                'rotation': (-55, 0, 0),  # pitch, yaw, roll in degrees - look down sharply at street
+                'fov': 90,  # wider fov to capture street level
+                'description': 'High angle intersection view looking at street'
+            },
+            {
+                'name': 'street_level',
+                'position': (10, -10, 2.5),  # street corner position
+                'rotation': (-35, 45, 0),  # angle down towards street center
+                'fov': 85,
+                'description': 'Street level corner view of traffic'
+            },
+            {
+                'name': 'traffic_cam',
+                'position': (0, -18, 6),  # standard traffic cam position
+                'rotation': (-50, 0, 0),  # look down at street traffic
+                'fov': 80,
+                'description': 'Standard traffic camera angle focused on road'
+            },
+            {
+                'name': 'side_view',
+                'position': (15, 0, 4),  # side position looking across road
+                'rotation': (-45, -90, 0),  # look down and across road
+                'fov': 85,
+                'description': 'Side street monitoring of road traffic'
+            },
+            {
+                'name': 'diagonal_high',
+                'position': (8, -8, 7),  # diagonal corner position
+                'rotation': (-60, 45, 0),  # look down sharply at street intersection
+                'fov': 80,
+                'description': 'Diagonal overhead view of intersection'
+            },
+            {
+                'name': 'low_angle',
+                'position': (6, -12, 1.8),  # low mounted street camera
+                'rotation': (-25, 30, 0),  # look slightly down at road
+                'fov': 95,  # very wide fov for street level coverage
+                'description': 'Low mounted camera capturing road activity'
+            }
+        ]
+        
+        # 3D world parameters
+        self.world_scale = 50.0  # meters
+        self.road_width = 7.0    # meters per lane
+        self.sidewalk_width = 2.5  # meters
+        self.building_height_range = (10, 30)  # meters
+        
+        # Class definitions with 3D properties
         self.classes = {
             0: {
                 'name': 'car',
                 'color_variants': [(200, 50, 50), (50, 50, 200), (150, 150, 150), (50, 50, 50)],
-                'size_range': (60, 120),  # Realistic car sizes
-                'aspect_ratio': (1.5, 2.0),  # Width/height ratio
-                'speed_range': (0.5, 2.0),  # Pixels per frame
-                'lane_preference': 'road'
+                'size_3d': (4.5, 1.5, 1.8),  # length, height, width in meters
+                'speed_range': (8.0, 15.0),  # m/s (30-55 km/h)
+                'lane_preference': 'road',
+                'model_type': 'sedan'  # sedan, suv, truck, bus
             },
             1: {
                 'name': 'pedestrian', 
                 'color_variants': [(100, 180, 100), (180, 100, 100), (100, 100, 180)],
-                'size_range': (20, 35),  # Human-sized
-                'aspect_ratio': (0.3, 0.5),
-                'speed_range': (0.1, 0.5),
-                'lane_preference': 'sidewalk'
+                'size_3d': (0.5, 1.7, 0.4),  # depth, height, width in meters
+                'speed_range': (0.8, 1.5),  # m/s (walking speed)
+                'lane_preference': 'sidewalk',
+                'model_type': 'person'
             },
             2: {
                 'name': 'cyclist',
                 'color_variants': [(50, 100, 200), (200, 100, 50), (100, 200, 50)],
-                'size_range': (35, 55),  # Bike + rider
-                'aspect_ratio': (0.8, 1.2),
-                'speed_range': (0.3, 1.0),
-                'lane_preference': 'bike_lane'
+                'size_3d': (1.8, 1.8, 0.6),  # length, height, width in meters
+                'speed_range': (3.0, 7.0),  # m/s (10-25 km/h)
+                'lane_preference': 'bike_lane',
+                'model_type': 'bicycle'
+            }
+        }
+        
+        # 3D model variants for diversity
+        self.model_variants = {
+            'car': {
+                'sedan': {'size_scale': 1.0, 'height_scale': 1.0},
+                'suv': {'size_scale': 1.1, 'height_scale': 1.3},
+                'truck': {'size_scale': 1.5, 'height_scale': 1.4},
+                'bus': {'size_scale': 2.5, 'height_scale': 1.8}
+            },
+            'pedestrian': {
+                'adult': {'size_scale': 1.0, 'height_scale': 1.0},
+                'child': {'size_scale': 0.7, 'height_scale': 0.7},
+                'tall': {'size_scale': 1.0, 'height_scale': 1.1}
+            },
+            'cyclist': {
+                'regular': {'size_scale': 1.0, 'height_scale': 1.0},
+                'sport': {'size_scale': 0.9, 'height_scale': 0.95},
+                'cargo': {'size_scale': 1.3, 'height_scale': 1.1}
             }
         }
         
@@ -90,6 +163,86 @@ class SyntheticTrafficGenerator:
         # Initialize persistent scene elements
         self.initialize_scene_database()
     
+    def project_3d_to_2d(self, point_3d, camera):
+        """Project 3D world coordinates to 2D image coordinates"""
+        x, y, z = point_3d
+        cam_x, cam_y, cam_z = camera['position']
+        pitch, yaw, roll = [np.radians(angle) for angle in camera['rotation']]
+        
+        # Translate to camera coordinates
+        dx = x - cam_x
+        dy = y - cam_y
+        dz = z - cam_z
+        
+        # Apply camera rotations (view matrix)
+        # Camera looks down Y axis in world space
+        # First apply yaw (rotation around Z axis)
+        cos_yaw, sin_yaw = np.cos(-yaw), np.sin(-yaw)
+        x1 = dx * cos_yaw - dy * sin_yaw
+        y1 = dx * sin_yaw + dy * cos_yaw
+        z1 = dz
+        
+        # Then apply pitch (rotation around X axis)
+        cos_pitch, sin_pitch = np.cos(-pitch), np.sin(-pitch)
+        x2 = x1
+        y2 = y1 * cos_pitch - z1 * sin_pitch
+        z2 = y1 * sin_pitch + z1 * cos_pitch
+        
+        # Camera space: +Z forward, +X right, +Y up
+        # Convert from world to camera coordinates
+        cam_x = x2
+        cam_y = -z2  # Up is negative Z in world
+        cam_z = y2   # Forward is Y in world
+        
+        # Check if point is in front of camera
+        if cam_z <= 0.1:  # Behind camera
+            return None
+            
+        # Perspective projection
+        fov_rad = np.radians(camera['fov'])
+        f = self.image_size[0] / (2 * np.tan(fov_rad / 2))
+        
+        # Project to image plane
+        x_2d = f * cam_x / cam_z + self.image_size[0] / 2
+        y_2d = f * cam_y / cam_z + self.image_size[1] / 2
+        
+        # Check if within image bounds with margin
+        margin = 50  # Allow some margin for partial objects
+        if -margin <= x_2d < self.image_size[0] + margin and -margin <= y_2d < self.image_size[1] + margin:
+            return (int(x_2d), int(y_2d))
+        return None
+    
+    def get_3d_bounding_box(self, position, size, rotation):
+        """Get 8 corners of 3D bounding box"""
+        x, y, z = position
+        length, height, width = size
+        yaw = np.radians(rotation)
+        
+        # Define corners in object space
+        corners = [
+            (-length/2, -width/2, 0),      # Front bottom left
+            (length/2, -width/2, 0),       # Front bottom right
+            (length/2, width/2, 0),        # Rear bottom right
+            (-length/2, width/2, 0),       # Rear bottom left
+            (-length/2, -width/2, height), # Front top left
+            (length/2, -width/2, height),  # Front top right
+            (length/2, width/2, height),   # Rear top right
+            (-length/2, width/2, height),  # Rear top left
+        ]
+        
+        # Rotate and translate to world space
+        cos_yaw, sin_yaw = np.cos(yaw), np.sin(yaw)
+        world_corners = []
+        
+        for cx, cy, cz in corners:
+            # Rotate around Z axis
+            rx = cx * cos_yaw - cy * sin_yaw
+            ry = cx * sin_yaw + cy * cos_yaw
+            # Translate
+            world_corners.append((x + rx, y + ry, z + cz))
+        
+        return world_corners
+    
     def initialize_scene_database(self):
         """Initialize persistent scene elements for consistency"""
         self.scene_db = {
@@ -99,39 +252,106 @@ class SyntheticTrafficGenerator:
         }
     
     def generate_road_layouts(self):
-        """Generate consistent road layout templates"""
+        """Generate 3D road layout templates"""
         layouts = {}
         
-        # Intersection layout
+        # 3D Intersection layout (coordinates in meters)
         layouts['intersection'] = {
             'roads': [
-                {'start': (0, 208), 'end': (416, 208), 'width': 80},
-                {'start': (208, 0), 'end': (208, 416), 'width': 80}
+                {'start': (-25, 0, 0), 'end': (25, 0, 0), 'width': self.road_width * 2, 'lanes': 4},
+                {'start': (0, -25, 0), 'end': (0, 25, 0), 'width': self.road_width * 2, 'lanes': 4}
             ],
             'sidewalks': [
-                {'start': (0, 168), 'end': (416, 168), 'width': 10},
-                {'start': (0, 248), 'end': (416, 248), 'width': 10},
-                {'start': (168, 0), 'end': (168, 416), 'width': 10},
-                {'start': (248, 0), 'end': (248, 416), 'width': 10}
+                {'start': (-25, -self.road_width - self.sidewalk_width, 0), 
+                 'end': (25, -self.road_width - self.sidewalk_width, 0), 
+                 'width': self.sidewalk_width, 'height': 0.15},
+                {'start': (-25, self.road_width + self.sidewalk_width, 0), 
+                 'end': (25, self.road_width + self.sidewalk_width, 0), 
+                 'width': self.sidewalk_width, 'height': 0.15}
             ],
-            'crosswalks': [
-                {'x': 208, 'y': 168, 'width': 80, 'height': 10},
-                {'x': 168, 'y': 208, 'width': 10, 'height': 80}
+            'buildings': [
+                {'position': (-15, -15, 0), 'size': (10, 10, 20), 'type': 'office'},
+                {'position': (15, -15, 0), 'size': (12, 8, 15), 'type': 'residential'},
+                {'position': (-15, 15, 0), 'size': (8, 12, 25), 'type': 'commercial'},
+                {'position': (15, 15, 0), 'size': (10, 10, 18), 'type': 'mixed'}
+            ],
+            'traffic_lights': [
+                {'position': (-5, -5, 5), 'direction': 'north'},
+                {'position': (5, 5, 5), 'direction': 'south'},
+                {'position': (-5, 5, 5), 'direction': 'east'},
+                {'position': (5, -5, 5), 'direction': 'west'}
             ]
         }
         
         # Straight road layout
         layouts['straight_road'] = {
             'roads': [
-                {'start': (0, 208), 'end': (416, 208), 'width': 120}
+                {'start': (-30, 0, 0), 'end': (30, 0, 0), 'width': self.road_width * 3, 'lanes': 6}
             ],
             'sidewalks': [
-                {'start': (0, 148), 'end': (416, 148), 'width': 15},
-                {'start': (0, 268), 'end': (416, 268), 'width': 15}
+                {'start': (-30, -self.road_width * 1.5 - self.sidewalk_width, 0), 
+                 'end': (30, -self.road_width * 1.5 - self.sidewalk_width, 0), 
+                 'width': self.sidewalk_width, 'height': 0.15},
+                {'start': (-30, self.road_width * 1.5 + self.sidewalk_width, 0), 
+                 'end': (30, self.road_width * 1.5 + self.sidewalk_width, 0), 
+                 'width': self.sidewalk_width, 'height': 0.15}
             ],
-            'bike_lanes': [
-                {'start': (0, 163), 'end': (416, 163), 'width': 10},
-                {'start': (0, 253), 'end': (416, 253), 'width': 10}
+            'buildings': [
+                {'position': (-20, -20, 0), 'size': (15, 10, 22), 'type': 'office'},
+                {'position': (10, -18, 0), 'size': (20, 8, 18), 'type': 'commercial'},
+                {'position': (-15, 18, 0), 'size': (25, 10, 16), 'type': 'residential'},
+                {'position': (20, 20, 0), 'size': (10, 15, 24), 'type': 'mixed'}
+            ],
+            'street_furniture': [
+                {'position': (-10, -12, 0), 'type': 'lamp_post', 'height': 6},
+                {'position': (0, -12, 0), 'type': 'lamp_post', 'height': 6},
+                {'position': (10, -12, 0), 'type': 'lamp_post', 'height': 6},
+                {'position': (-5, 12, 0), 'type': 'bus_stop', 'size': (3, 2, 2.5)},
+                {'position': (15, 12, 0), 'type': 'bench', 'size': (2, 0.5, 0.8)}
+            ]
+        }
+        
+        # Parking area layout
+        layouts['parking_area'] = {
+            'roads': [
+                {'start': (-25, -5, 0), 'end': (25, -5, 0), 'width': self.road_width, 'lanes': 2}
+            ],
+            'sidewalks': [
+                {'start': (-25, -5 - self.sidewalk_width, 0), 
+                 'end': (25, -5 - self.sidewalk_width, 0), 
+                 'width': self.sidewalk_width, 'height': 0.15}
+            ],
+            'buildings': [
+                {'position': (0, 15, 0), 'size': (40, 20, 15), 'type': 'commercial'}
+            ],
+            'parking_spaces': [
+                {'position': (i * 3, 5, 0), 'size': (2.5, 5, 0), 'occupied': random.random() > 0.3}
+                for i in range(-8, 9)
+            ]
+        }
+        
+        # Bike lane layout
+        layouts['bike_lane'] = layouts['straight_road'].copy()  # Similar to straight road
+        
+        # Pedestrian crossing layout
+        layouts['pedestrian_crossing'] = {
+            'roads': [
+                {'start': (-20, 0, 0), 'end': (20, 0, 0), 'width': self.road_width * 2, 'lanes': 4}
+            ],
+            'sidewalks': [
+                {'start': (-20, -self.road_width - self.sidewalk_width, 0), 
+                 'end': (20, -self.road_width - self.sidewalk_width, 0), 
+                 'width': self.sidewalk_width, 'height': 0.15},
+                {'start': (-20, self.road_width + self.sidewalk_width, 0), 
+                 'end': (20, self.road_width + self.sidewalk_width, 0), 
+                 'width': self.sidewalk_width, 'height': 0.15}
+            ],
+            'crosswalks': [
+                {'position': (0, 0, 0), 'width': 3, 'length': self.road_width * 2, 'stripes': 10}
+            ],
+            'buildings': [
+                {'position': (-10, -15, 0), 'size': (15, 10, 20), 'type': 'office'},
+                {'position': (10, 15, 0), 'size': (15, 10, 18), 'type': 'residential'}
             ]
         }
         
@@ -162,26 +382,377 @@ class SyntheticTrafficGenerator:
         return patterns
     
     def generate_object_behaviors(self):
-        """Generate consistent object movement behaviors"""
+        """Generate 3D object movement behaviors"""
         behaviors = {
             'car': {
-                'straight': {'velocity': (2.0, 0), 'variance': 0.1},
-                'turning_left': {'velocity': (1.0, -1.0), 'variance': 0.2},
-                'turning_right': {'velocity': (1.0, 1.0), 'variance': 0.2},
-                'stopped': {'velocity': (0, 0), 'variance': 0.0}
+                'straight': {'velocity': (10.0, 0, 0), 'variance': 2.0},
+                'turning_left': {'velocity': (5.0, -5.0, 0), 'variance': 1.0},
+                'turning_right': {'velocity': (5.0, 5.0, 0), 'variance': 1.0},
+                'stopped': {'velocity': (0, 0, 0), 'variance': 0.0}
             },
             'pedestrian': {
-                'walking': {'velocity': (0.3, 0), 'variance': 0.2},
-                'crossing': {'velocity': (0, 0.3), 'variance': 0.1},
-                'standing': {'velocity': (0, 0), 'variance': 0.0}
+                'walking': {'velocity': (1.2, 0, 0), 'variance': 0.3},
+                'crossing': {'velocity': (0, 1.2, 0), 'variance': 0.2},
+                'standing': {'velocity': (0, 0, 0), 'variance': 0.0}
             },
             'cyclist': {
-                'riding': {'velocity': (1.0, 0), 'variance': 0.15},
-                'slow': {'velocity': (0.5, 0), 'variance': 0.1},
-                'stopped': {'velocity': (0, 0), 'variance': 0.0}
+                'riding': {'velocity': (5.0, 0, 0), 'variance': 1.0},
+                'slow': {'velocity': (2.5, 0, 0), 'variance': 0.5},
+                'stopped': {'velocity': (0, 0, 0), 'variance': 0.0}
             }
         }
         return behaviors
+    
+    def render_3d_scene(self, scenario, camera, time_condition, weather):
+        """Render 3D scene from specified camera viewpoint"""
+        # Create base image with sky gradient
+        img = self.create_sky_background(time_condition, weather)
+        draw = ImageDraw.Draw(img)
+        
+        # Get scene layout
+        layout = self.scene_db['road_layouts'].get(scenario, self.scene_db['road_layouts']['straight_road'])
+        
+        # Render ground plane first
+        self.render_ground_plane(img, draw, camera)
+        
+        # Render scene elements in order (back to front)
+        self.render_buildings(img, draw, layout.get('buildings', []), camera)
+        self.render_roads_3d(img, draw, layout.get('roads', []), camera)
+        self.render_sidewalks_3d(img, draw, layout.get('sidewalks', []), camera)
+        self.render_street_furniture(img, draw, layout.get('street_furniture', []), camera)
+        self.render_traffic_lights(img, draw, layout.get('traffic_lights', []), camera)
+        
+        # Apply atmospheric effects
+        img = self.apply_atmospheric_effects(img, weather, camera['position'][2])
+        
+        return img
+    
+    def render_ground_plane(self, img, draw, camera):
+        """Render ground plane to establish scene depth"""
+        # Create ground plane grid
+        ground_color = (100, 100, 100)  # Gray ground
+        grid_size = 5  # 5 meter grid
+        
+        # Define ground plane corners in world space
+        ground_corners = []
+        for x in range(-30, 31, grid_size):
+            for y in range(-30, 31, grid_size):
+                ground_corners.append([
+                    (x, y, 0),
+                    (x + grid_size, y, 0),
+                    (x + grid_size, y + grid_size, 0),
+                    (x, y + grid_size, 0)
+                ])
+        
+        # Project and draw ground squares
+        for square in ground_corners:
+            projected = []
+            for corner in square:
+                p2d = self.project_3d_to_2d(corner, camera)
+                if p2d:
+                    projected.append(p2d)
+            
+            if len(projected) == 4:
+                # Draw ground square with slight variation
+                color_var = random.randint(-10, 10)
+                square_color = tuple(max(0, min(255, c + color_var)) for c in ground_color)
+                draw.polygon(projected, fill=square_color, outline=(90, 90, 90))
+    
+    def render_buildings(self, img, draw, buildings, camera):
+        """Render 3D buildings with perspective"""
+        for building in buildings:
+            pos = building['position']
+            size = building['size']
+            
+            # Get building corners
+            corners = [
+                (pos[0] - size[0]/2, pos[1] - size[1]/2, pos[2]),
+                (pos[0] + size[0]/2, pos[1] - size[1]/2, pos[2]),
+                (pos[0] + size[0]/2, pos[1] + size[1]/2, pos[2]),
+                (pos[0] - size[0]/2, pos[1] + size[1]/2, pos[2]),
+                (pos[0] - size[0]/2, pos[1] - size[1]/2, pos[2] + size[2]),
+                (pos[0] + size[0]/2, pos[1] - size[1]/2, pos[2] + size[2]),
+                (pos[0] + size[0]/2, pos[1] + size[1]/2, pos[2] + size[2]),
+                (pos[0] - size[0]/2, pos[1] + size[1]/2, pos[2] + size[2])
+            ]
+            
+            # Project to 2D
+            projected = []
+            for corner in corners:
+                p2d = self.project_3d_to_2d(corner, camera)
+                if p2d:
+                    projected.append(p2d)
+            
+            if len(projected) >= 4:
+                # Draw building faces
+                building_color = (120, 120, 140) if building['type'] == 'office' else (160, 140, 120)
+                
+                # Draw visible faces based on camera angle
+                faces = [
+                    [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],  # Sides
+                    [4, 5, 6, 7]  # Top
+                ]
+                
+                for face in faces:
+                    if all(i < len(projected) for i in face):
+                        points = [projected[i] for i in face]
+                        draw.polygon(points, fill=building_color, outline=(80, 80, 80))
+    
+    def render_roads_3d(self, img, draw, roads, camera):
+        """Render 3D roads with lane markings"""
+        for road in roads:
+            start, end = road['start'], road['end']
+            width = road['width']
+            
+            # Create road surface points
+            road_points = []
+            num_segments = 20
+            
+            for i in range(num_segments + 1):
+                t = i / num_segments
+                x = start[0] + t * (end[0] - start[0])
+                y = start[1] + t * (end[1] - start[1])
+                
+                # Road edges
+                left = (x - width/2, y, 0)
+                right = (x + width/2, y, 0)
+                
+                left_2d = self.project_3d_to_2d(left, camera)
+                right_2d = self.project_3d_to_2d(right, camera)
+                
+                if left_2d and right_2d:
+                    road_points.append((left_2d, right_2d))
+            
+            # Draw road segments
+            for i in range(len(road_points) - 1):
+                points = [
+                    road_points[i][0], road_points[i][1],
+                    road_points[i+1][1], road_points[i+1][0]
+                ]
+                draw.polygon(points, fill=(60, 60, 60))
+            
+            # Draw lane markings
+            if 'lanes' in road:
+                for lane in range(1, road['lanes']):
+                    lane_offset = (lane / road['lanes'] - 0.5) * width
+                    
+                    for i in range(0, num_segments, 2):
+                        t = i / num_segments
+                        x = start[0] + t * (end[0] - start[0])
+                        y = start[1] + t * (end[1] - start[1]) + lane_offset
+                        
+                        p1 = self.project_3d_to_2d((x, y, 0), camera)
+                        p2 = self.project_3d_to_2d((x + (end[0]-start[0])/num_segments, y, 0), camera)
+                        
+                        if p1 and p2:
+                            draw.line([p1, p2], fill=(200, 200, 200), width=2)
+    
+    def render_sidewalks_3d(self, img, draw, sidewalks, camera):
+        """Render 3D sidewalks"""
+        for sidewalk in sidewalks:
+            # Similar to roads but with different color and texture
+            start, end = sidewalk['start'], sidewalk['end']
+            width = sidewalk['width']
+            
+            # Create sidewalk points
+            corners = [
+                self.project_3d_to_2d((start[0], start[1], 0), camera),
+                self.project_3d_to_2d((end[0], end[1], 0), camera),
+                self.project_3d_to_2d((end[0], end[1] + width, 0), camera),
+                self.project_3d_to_2d((start[0], start[1] + width, 0), camera)
+            ]
+            
+            if all(corners):
+                draw.polygon(corners, fill=(140, 140, 140), outline=(120, 120, 120))
+    
+    def render_street_furniture(self, img, draw, furniture, camera):
+        """Render street furniture like lamp posts and benches"""
+        for item in furniture:
+            pos = item['position']
+            
+            if item['type'] == 'lamp_post':
+                # Draw lamp post
+                base = self.project_3d_to_2d(pos, camera)
+                top = self.project_3d_to_2d((pos[0], pos[1], pos[2] + item['height']), camera)
+                
+                if base and top:
+                    draw.line([base, top], fill=(80, 80, 80), width=3)
+                    # Lamp
+                    draw.ellipse([top[0]-5, top[1]-5, top[0]+5, top[1]+5], 
+                               fill=(255, 255, 200))
+            
+            elif item['type'] in ['bus_stop', 'bench']:
+                # Simplified furniture rendering
+                size = item.get('size', (2, 1, 1))
+                corners = self.get_3d_bounding_box(pos, size, 0)
+                
+                projected = []
+                for corner in corners[:4]:  # Just bottom face
+                    p2d = self.project_3d_to_2d(corner, camera)
+                    if p2d:
+                        projected.append(p2d)
+                
+                if len(projected) >= 4:
+                    draw.polygon(projected, fill=(100, 80, 60))
+    
+    def render_traffic_lights(self, img, draw, traffic_lights, camera):
+        """Render traffic lights"""
+        for light in traffic_lights:
+            pos = light['position']
+            p2d = self.project_3d_to_2d(pos, camera)
+            
+            if p2d:
+                # Draw traffic light pole and lights
+                draw.rectangle([p2d[0]-3, p2d[1]-10, p2d[0]+3, p2d[1]+10], 
+                             fill=(40, 40, 40))
+                
+                # Draw light states (simplified)
+                colors = [(255, 0, 0), (255, 255, 0), (0, 255, 0)]
+                for i, color in enumerate(colors):
+                    draw.ellipse([p2d[0]-3, p2d[1]-8+i*6, p2d[0]+3, p2d[1]-2+i*6], 
+                               fill=color if i == 2 else (50, 50, 50))
+    
+    def render_3d_object(self, img, obj_state, bbox_2d, camera):
+        """Render a 3D object based on its projected bounding box"""
+        draw = ImageDraw.Draw(img)
+        class_info = self.classes[obj_state['class_id']]
+        color = obj_state.get('color', random.choice(class_info['color_variants']))
+        
+        if class_info['name'] == 'car':
+            self.render_3d_car(draw, bbox_2d, color, obj_state)
+        elif class_info['name'] == 'pedestrian':
+            self.render_3d_pedestrian(draw, bbox_2d, color, obj_state)
+        elif class_info['name'] == 'cyclist':
+            self.render_3d_cyclist(draw, bbox_2d, color, obj_state)
+    
+    def render_3d_car(self, draw, bbox_2d, color, state):
+        """Render a 3D car from bounding box points"""
+        if len(bbox_2d) >= 8:
+            # Draw car body faces
+            # Bottom face
+            draw.polygon(bbox_2d[:4], fill=tuple(int(c*0.7) for c in color))
+            # Top face
+            draw.polygon(bbox_2d[4:8], fill=color)
+            # Side faces
+            for i in range(4):
+                j = (i + 1) % 4
+                face = [bbox_2d[i], bbox_2d[j], bbox_2d[j+4], bbox_2d[i+4]]
+                draw.polygon(face, fill=tuple(int(c*0.85) for c in color))
+            
+            # Windows (simplified)
+            window_color = (50, 50, 70, 180)
+            if len(bbox_2d) >= 8:
+                # Windshield
+                draw.polygon([bbox_2d[4], bbox_2d[5], 
+                            tuple(int(0.7*bbox_2d[5][i] + 0.3*bbox_2d[6][i]) for i in range(2)),
+                            tuple(int(0.7*bbox_2d[4][i] + 0.3*bbox_2d[7][i]) for i in range(2))],
+                           fill=window_color)
+    
+    def render_3d_pedestrian(self, draw, bbox_2d, color, state):
+        """Render a 3D pedestrian"""
+        if len(bbox_2d) >= 4:
+            # Simplified pedestrian as vertical rectangle
+            center_x = sum(p[0] for p in bbox_2d[:4]) // 4
+            bottom_y = max(p[1] for p in bbox_2d[:4])
+            top_y = min(p[1] for p in bbox_2d[4:]) if len(bbox_2d) >= 8 else bottom_y - 40
+            
+            # Ensure proper coordinate order
+            if top_y > bottom_y:
+                top_y, bottom_y = bottom_y, top_y
+            
+            width = max(5, abs(bbox_2d[1][0] - bbox_2d[0][0]) // 3)
+            
+            # Body
+            body_top = min(top_y + 10, bottom_y - 5)
+            if body_top < bottom_y:
+                draw.rectangle([center_x - width//2, body_top, 
+                              center_x + width//2, bottom_y],
+                              fill=color)
+            
+            # Head
+            head_size = width // 1.5
+            if top_y + head_size < body_top:
+                draw.ellipse([center_x - width//3, top_y,
+                             center_x + width//3, top_y + head_size],
+                            fill=tuple(min(255, int(c*1.2)) for c in color[:3]))
+    
+    def render_3d_cyclist(self, draw, bbox_2d, color, state):
+        """Render a 3D cyclist"""
+        if len(bbox_2d) >= 4:
+            # Draw bicycle frame
+            center_x = sum(p[0] for p in bbox_2d[:4]) // 4
+            center_y = sum(p[1] for p in bbox_2d[:4]) // 4
+            
+            # Wheels
+            wheel_size = abs(bbox_2d[1][0] - bbox_2d[0][0]) // 4
+            draw.ellipse([bbox_2d[0][0], center_y - wheel_size,
+                         bbox_2d[0][0] + wheel_size*2, center_y + wheel_size],
+                        outline=(30, 30, 30), width=3)
+            draw.ellipse([bbox_2d[1][0] - wheel_size*2, center_y - wheel_size,
+                         bbox_2d[1][0], center_y + wheel_size],
+                        outline=(30, 30, 30), width=3)
+            
+            # Frame
+            draw.line([bbox_2d[0][0] + wheel_size, center_y,
+                      bbox_2d[1][0] - wheel_size, center_y],
+                     fill=(100, 100, 100), width=2)
+            
+            # Rider (simplified)
+            if len(bbox_2d) >= 8:
+                rider_top = min(p[1] for p in bbox_2d[4:])
+                draw.ellipse([center_x - wheel_size//2, rider_top,
+                            center_x + wheel_size//2, rider_top + wheel_size],
+                            fill=color)
+    
+    def apply_atmospheric_effects(self, img, weather, camera_height):
+        """Apply weather and atmospheric effects"""
+        if weather == 'fog':
+            # Add fog effect that's stronger at distance
+            fog_layer = Image.new('RGBA', self.image_size, (200, 200, 200, 100))
+            img = Image.alpha_composite(img.convert('RGBA'), fog_layer).convert('RGB')
+            img = img.filter(ImageFilter.GaussianBlur(radius=1))
+        
+        elif weather == 'rain':
+            # Add rain streaks
+            draw = ImageDraw.Draw(img)
+            for _ in range(200):
+                x = random.randint(0, self.image_size[0])
+                y = random.randint(0, self.image_size[1])
+                draw.line([x, y, x+1, y+8], fill=(150, 150, 180), width=1)
+        
+        return img
+    
+    def create_sky_background(self, time_condition, weather):
+        """Create realistic sky gradient based on time and weather"""
+        img = Image.new('RGB', self.image_size)
+        draw = ImageDraw.Draw(img)
+        
+        # Sky colors based on time of day
+        sky_colors = {
+            'day': {'top': (135, 206, 235), 'bottom': (255, 255, 255)},
+            'dusk': {'top': (255, 94, 77), 'bottom': (255, 154, 0)},
+            'night': {'top': (25, 25, 112), 'bottom': (72, 61, 139)},
+            'dawn': {'top': (255, 191, 0), 'bottom': (255, 229, 180)}
+        }
+        
+        colors = sky_colors.get(time_condition, sky_colors['day'])
+        
+        # Apply weather modifications
+        if weather == 'rain':
+            colors = {'top': tuple(int(c * 0.6) for c in colors['top']),
+                     'bottom': tuple(int(c * 0.7) for c in colors['bottom'])}
+        elif weather == 'fog':
+            colors = {'top': (200, 200, 200), 'bottom': (220, 220, 220)}
+        
+        # Create gradient
+        for y in range(self.image_size[1]):
+            ratio = y / self.image_size[1]
+            r = int(colors['top'][0] * (1 - ratio) + colors['bottom'][0] * ratio)
+            g = int(colors['top'][1] * (1 - ratio) + colors['bottom'][1] * ratio)
+            b = int(colors['top'][2] * (1 - ratio) + colors['bottom'][2] * ratio)
+            draw.rectangle([(0, y), (self.image_size[0], y + 1)], fill=(r, g, b))
+        
+        return img
     
     def generate_background(self, scenario='straight_road', time_condition='day', weather='clear'):
         """Generate realistic road background based on scenario"""
@@ -533,7 +1104,7 @@ class SyntheticTrafficGenerator:
         }
     
     def generate_object_state(self, class_id, scenario, speed_modifier):
-        """Generate initial state for an object with physics parameters"""
+        """Generate initial 3D state for an object with physics parameters"""
         class_info = self.classes[class_id]
         behaviors = self.scene_db['object_behaviors'][class_info['name']]
         
@@ -551,40 +1122,78 @@ class SyntheticTrafficGenerator:
         # Filter valid behaviors
         valid_behaviors = [b for b in behavior_weights.keys() if b in behaviors]
         weights = [behavior_weights.get(b, 0.1) for b in valid_behaviors]
+        
+        # Handle case where no valid behaviors found
+        if not valid_behaviors:
+            # Use default behavior based on class
+            if class_id == 0:  # Car
+                valid_behaviors = ['straight']
+            elif class_id == 1:  # Pedestrian
+                valid_behaviors = ['walking']
+            else:  # Cyclist
+                valid_behaviors = ['riding']
+            weights = [1.0]
+        
         behavior_name = np.random.choice(valid_behaviors, p=np.array(weights)/sum(weights))
         behavior = behaviors[behavior_name]
         
-        # Initial position based on lane preference
+        # Initial 3D position in visible area based on lane preference
+        # Place objects in front of cameras (positive Y direction)
         if class_info['lane_preference'] == 'road':
-            x = random.uniform(50, 366)
-            y = random.uniform(168, 248)
+            # Place on road lanes - cars drive along roads
+            x = random.uniform(-8, 8)    # Across the road width
+            y = random.uniform(0, 15)    # In front of camera (positive Y)
+            z = 0  # Ground level
         elif class_info['lane_preference'] == 'sidewalk':
-            x = random.uniform(50, 366)
-            y = random.choice([random.uniform(100, 168), random.uniform(248, 316)])
+            # Place on sidewalks - pedestrians walk on sides
+            x = random.uniform(-10, 10)
+            y = random.uniform(0, 12)    # In front of camera
+            # Choose sidewalk side
+            if x > 0:
+                x = random.uniform(6, 10)   # Right sidewalk
+            else:
+                x = random.uniform(-10, -6) # Left sidewalk  
+            z = 0.15  # Sidewalk height
         else:  # bike_lane
-            x = random.uniform(50, 366)
-            y = random.choice([random.uniform(163, 173), random.uniform(243, 253)])
+            # Place in bike lanes - cyclists on road edges
+            x = random.uniform(-6, 6)
+            y = random.uniform(2, 10)    # In front of camera
+            # Bias towards road edges
+            if random.random() > 0.5:
+                x = random.uniform(3, 6)    # Right bike lane
+            else:
+                x = random.uniform(-6, -3)  # Left bike lane
+            z = 0
         
-        # Velocity with variance
-        base_vx, base_vy = behavior['velocity']
+        # 3D velocity with variance
+        base_vx, base_vy, base_vz = behavior['velocity']
         vx = base_vx * speed_modifier + random.uniform(-behavior['variance'], behavior['variance'])
         vy = base_vy * speed_modifier + random.uniform(-behavior['variance'], behavior['variance'])
+        vz = base_vz  # Usually 0
         
-        # Size
-        base_size = random.randint(*class_info['size_range'])
-        aspect_ratio = random.uniform(*class_info['aspect_ratio'])
+        # Select model variant
+        model_variants = list(self.model_variants[class_info['name']].keys())
+        model_variant = random.choice(model_variants)
+        
+        # Get size from 3D specifications
+        size_3d = class_info['size_3d']
+        variant_scale = self.model_variants[class_info['name']][model_variant]
         
         return {
             'class_id': class_id,
             'x': x,
             'y': y,
+            'z': z,
             'vx': vx,
             'vy': vy,
-            'width': int(base_size * aspect_ratio),
-            'height': base_size,
+            'vz': vz,
+            'size_3d': size_3d,
+            'model_variant': model_variant,
             'behavior': behavior_name,
-            'rotation': random.uniform(-5, 5) if class_id == 0 else 0,
+            'rotation': random.uniform(-180, 180) if class_id == 0 else random.uniform(-45, 45),
+            'color': random.choice(class_info['color_variants']),
             'lights_on': random.random() > 0.5,
+            'animation_state': 'moving' if abs(vx) + abs(vy) > 0.1 else 'idle',
             'walking': behavior_name in ['walking', 'crossing'],
             'pedaling': behavior_name != 'stopped',
             'walk_phase': random.uniform(0, 2 * np.pi),
@@ -592,12 +1201,13 @@ class SyntheticTrafficGenerator:
         }
     
     def simulate_frame(self, scenario_data, frame_num, delta_time=0.1):
-        """Simulate one frame with physics updates"""
+        """Simulate one frame with 3D physics updates"""
         # Update object positions
         for state in scenario_data['object_states']:
-            # Physics update
+            # 3D Physics update
             state['x'] += state['vx'] * delta_time
             state['y'] += state['vy'] * delta_time
+            state['z'] = state.get('z', 0) + state.get('vz', 0) * delta_time
             
             # Update animation phases
             if state.get('walking', False):
@@ -605,19 +1215,24 @@ class SyntheticTrafficGenerator:
             if state.get('pedaling', False):
                 state['pedal_phase'] += 0.2
             
-            # Boundary checks and wrapping
-            if state['x'] < -state['width']:
-                state['x'] = self.image_size[0] + state['width']
-            elif state['x'] > self.image_size[0] + state['width']:
-                state['x'] = -state['width']
+            # Boundary checks and wrapping in 3D world
+            world_bounds = self.world_scale / 2
+            if state['x'] < -world_bounds:
+                state['x'] = world_bounds
+            elif state['x'] > world_bounds:
+                state['x'] = -world_bounds
             
-            if state['y'] < -state['height']:
-                state['y'] = self.image_size[1] + state['height']
-            elif state['y'] > self.image_size[1] + state['height']:
-                state['y'] = -state['height']
+            if state['y'] < -world_bounds:
+                state['y'] = world_bounds
+            elif state['y'] > world_bounds:
+                state['y'] = -world_bounds
         
-        # Generate frame
-        return self.render_frame(scenario_data)
+        # Select camera for this frame (can vary for dynamic views)
+        if 'camera' not in scenario_data:
+            scenario_data['camera'] = random.choice(self.camera_configs)
+        
+        # Generate 3D frame
+        return self.render_3d_frame(scenario_data, scenario_data['camera'])
     
     def render_frame(self, scenario_data):
         """Render a single frame from scenario data"""
@@ -671,14 +1286,92 @@ class SyntheticTrafficGenerator:
         return img, annotations
     
     def generate_image_with_annotations(self, image_id, split='train'):
-        """Generate single image with annotations using scenario simulation"""
+        """Generate single image with annotations using 3D scenario simulation"""
         # Generate scenario
         scenario_data = self.generate_traffic_scenario()
         
-        # Render frame
-        img, annotations = self.render_frame(scenario_data)
+        # Select random camera viewpoint
+        camera = random.choice(self.camera_configs)
+        scenario_data['camera'] = camera
+        
+        # Render 3D scene from camera viewpoint
+        img, annotations = self.render_3d_frame(scenario_data, camera)
         
         return img, annotations, scenario_data
+    
+    def render_3d_frame(self, scenario_data, camera):
+        """Render a frame from 3D scene with proper perspective"""
+        # Create 3D scene background
+        img = self.render_3d_scene(
+            scenario_data['scenario'],
+            camera,
+            scenario_data['time_condition'],
+            scenario_data['weather']
+        )
+        
+        annotations = []
+        
+        # Sort objects by distance from camera for proper occlusion
+        camera_pos = np.array(camera['position'])
+        sorted_objects = sorted(scenario_data['object_states'], 
+                              key=lambda obj: -np.linalg.norm(
+                                  np.array([obj['x'], obj['y'], obj.get('z', 0)]) - camera_pos
+                              ))
+        
+        # Render objects in 3D
+        for obj_state in sorted_objects:
+            # Get 3D bounding box
+            position_3d = (obj_state['x'], obj_state['y'], obj_state.get('z', 0))
+            class_info = self.classes[obj_state['class_id']]
+            size_3d = class_info['size_3d']
+            
+            # Apply model variant scaling
+            if 'model_variant' in obj_state:
+                variant = self.model_variants[class_info['name']].get(obj_state['model_variant'], {})
+                size_3d = tuple(s * variant.get('size_scale', 1.0) for s in size_3d)
+            
+            # Get 3D bounding box corners
+            bbox_3d = self.get_3d_bounding_box(position_3d, size_3d, obj_state.get('rotation', 0))
+            
+            # Project to 2D
+            bbox_2d = []
+            for corner in bbox_3d:
+                point_2d = self.project_3d_to_2d(corner, camera)
+                if point_2d:
+                    bbox_2d.append(point_2d)
+            
+            if len(bbox_2d) >= 4:  # Need at least 4 points visible
+                # Render 3D object
+                self.render_3d_object(img, obj_state, bbox_2d, camera)
+                
+                # Calculate 2D bounding box for annotation
+                xs = [p[0] for p in bbox_2d]
+                ys = [p[1] for p in bbox_2d]
+                x_min, x_max = max(0, min(xs)), min(self.image_size[0], max(xs))
+                y_min, y_max = max(0, min(ys)), min(self.image_size[1], max(ys))
+                
+                if x_max > x_min and y_max > y_min:
+                    cx = (x_min + x_max) / 2 / self.image_size[0]
+                    cy = (y_min + y_max) / 2 / self.image_size[1]
+                    w = (x_max - x_min) / self.image_size[0]
+                    h = (y_max - y_min) / self.image_size[1]
+                    
+                    annotations.append({
+                        'class_id': obj_state['class_id'],
+                        'cx': cx,
+                        'cy': cy,
+                        'w': w,
+                        'h': h,
+                        'object_id': id(obj_state),
+                        'camera_view': camera['name'],
+                        '3d_info': {
+                            'position': position_3d,
+                            'rotation': obj_state.get('rotation', 0),
+                            'size': size_3d
+                        }
+                    })
+        
+        return img, annotations
     
     def generate_sequence(self, num_frames=10, scenario_params=None):
         """Generate a sequence of frames for video training"""
@@ -695,9 +1388,9 @@ class SyntheticTrafficGenerator:
         
         return sequence, scenario_data
     
-    def export_for_ui_training(self, scenario_data, output_path):
-        """Export scenario data for live UI training"""
-        # Convert to JSON-serializable format
+    def export_for_web_interface(self, scenario_data, output_path):
+        """Export 3D models and scene data for web interface visualization"""
+        # Create comprehensive export data with 3D information
         export_data = {
             'scenario': scenario_data['scenario'],
             'time_condition': scenario_data['time_condition'],
@@ -705,27 +1398,231 @@ class SyntheticTrafficGenerator:
             'traffic_pattern': scenario_data['traffic_pattern'],
             'timestamp': datetime.now().isoformat(),
             'seed': self.seed,
-            'objects': []
+            'world_config': {
+                'scale': self.world_scale,
+                'road_width': self.road_width,
+                'sidewalk_width': self.sidewalk_width
+            },
+            'camera_configs': self.camera_configs,
+            'scene_layout': self.scene_db['road_layouts'][scenario_data['scenario']],
+            'objects': [],
+            'models_3d': {}
         }
         
+        # Export object states with 3D information
         for obj in scenario_data['object_states']:
+            class_info = self.classes[obj['class_id']]
+            model_variant = obj.get('model_variant', list(self.model_variants[class_info['name']].keys())[0])
+            
             export_data['objects'].append({
+                'id': obj.get('id', id(obj)),
                 'class_id': obj['class_id'],
-                'class_name': self.classes[obj['class_id']]['name'],
-                'initial_position': {'x': obj['x'], 'y': obj['y']},
-                'velocity': {'vx': obj['vx'], 'vy': obj['vy']},
-                'size': {'width': obj['width'], 'height': obj['height']},
+                'class_name': class_info['name'],
+                'model_variant': model_variant,
+                'position_3d': {
+                    'x': obj['x'], 
+                    'y': obj['y'], 
+                    'z': obj.get('z', 0)
+                },
+                'rotation': obj.get('rotation', 0),
+                'velocity_3d': {
+                    'vx': obj['vx'], 
+                    'vy': obj['vy'], 
+                    'vz': obj.get('vz', 0)
+                },
+                'size_3d': class_info['size_3d'],
                 'behavior': obj['behavior'],
                 'properties': {
-                    'rotation': obj.get('rotation', 0),
-                    'lights_on': obj.get('lights_on', False)
+                    'color': obj.get('color', class_info['color_variants'][0]),
+                    'lights_on': obj.get('lights_on', False),
+                    'animation_state': obj.get('animation_state', 'idle')
                 }
             })
         
+        # Export 3D model definitions
+        export_data['models_3d'] = self.export_3d_models()
+        
+        # Save main JSON file
         with open(output_path, 'w') as f:
             json.dump(export_data, f, indent=2)
         
+        # Also save simplified GLTF-style model descriptions
+        models_dir = os.path.join(os.path.dirname(output_path), 'models_3d')
+        os.makedirs(models_dir, exist_ok=True)
+        
+        for class_id, class_info in self.classes.items():
+            model_file = os.path.join(models_dir, f"{class_info['name']}_models.json")
+            with open(model_file, 'w') as f:
+                json.dump(self.generate_3d_model_data(class_id), f, indent=2)
+        
         return export_data
+    
+    def export_3d_models(self):
+        """Export 3D model definitions for web rendering"""
+        models = {}
+        
+        for class_id, class_info in self.classes.items():
+            class_name = class_info['name']
+            models[class_name] = {
+                'base_size': class_info['size_3d'],
+                'variants': self.model_variants.get(class_name, {}),
+                'geometry': self.generate_model_geometry(class_name),
+                'materials': self.generate_model_materials(class_name),
+                'animations': self.generate_model_animations(class_name)
+            }
+        
+        return models
+    
+    def generate_3d_model_data(self, class_id):
+        """Generate detailed 3D model data for a specific class"""
+        class_info = self.classes[class_id]
+        class_name = class_info['name']
+        
+        if class_name == 'car':
+            return self.generate_car_3d_model()
+        elif class_name == 'pedestrian':
+            return self.generate_pedestrian_3d_model()
+        elif class_name == 'cyclist':
+            return self.generate_cyclist_3d_model()
+    
+    def generate_car_3d_model(self):
+        """Generate 3D car model data"""
+        return {
+            'type': 'car',
+            'vertices': [
+                # Simplified car body vertices (normalized to unit size)
+                [-0.5, -0.5, 0], [0.5, -0.5, 0], [0.5, 0.5, 0], [-0.5, 0.5, 0],  # Bottom
+                [-0.4, -0.4, 0.3], [0.4, -0.4, 0.3], [0.4, 0.4, 0.3], [-0.4, 0.4, 0.3],  # Mid
+                [-0.3, -0.3, 0.6], [0.3, -0.3, 0.6], [0.3, 0.3, 0.6], [-0.3, 0.3, 0.6],  # Top
+            ],
+            'faces': [
+                # Bottom, sides, top, front, back
+                [0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11],
+                [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0],
+                [4, 8, 9, 5], [5, 9, 10, 6], [6, 10, 11, 7], [7, 11, 8, 4]
+            ],
+            'wheels': [
+                {'position': [-0.3, -0.5, 0.1], 'radius': 0.15},
+                {'position': [0.3, -0.5, 0.1], 'radius': 0.15},
+                {'position': [-0.3, 0.5, 0.1], 'radius': 0.15},
+                {'position': [0.3, 0.5, 0.1], 'radius': 0.15}
+            ],
+            'materials': {
+                'body': {'type': 'metal', 'roughness': 0.4, 'metalness': 0.8},
+                'windows': {'type': 'glass', 'opacity': 0.3, 'reflectivity': 0.7},
+                'wheels': {'type': 'rubber', 'roughness': 0.9, 'metalness': 0.1}
+            }
+        }
+    
+    def generate_pedestrian_3d_model(self):
+        """Generate 3D pedestrian model data"""
+        return {
+            'type': 'pedestrian',
+            'body_parts': {
+                'head': {'position': [0, 0, 0.85], 'size': [0.15, 0.15, 0.2]},
+                'torso': {'position': [0, 0, 0.5], 'size': [0.3, 0.2, 0.5]},
+                'left_arm': {'position': [-0.2, 0, 0.5], 'size': [0.08, 0.08, 0.4]},
+                'right_arm': {'position': [0.2, 0, 0.5], 'size': [0.08, 0.08, 0.4]},
+                'left_leg': {'position': [-0.1, 0, 0.25], 'size': [0.1, 0.1, 0.5]},
+                'right_leg': {'position': [0.1, 0, 0.25], 'size': [0.1, 0.1, 0.5]}
+            },
+            'animations': {
+                'idle': {'duration': 2.0, 'loop': True},
+                'walk': {'duration': 1.0, 'loop': True},
+                'run': {'duration': 0.6, 'loop': True}
+            },
+            'materials': {
+                'skin': {'type': 'organic', 'roughness': 0.7},
+                'clothing': {'type': 'fabric', 'roughness': 0.85}
+            }
+        }
+    
+    def generate_cyclist_3d_model(self):
+        """Generate 3D cyclist model data"""
+        return {
+            'type': 'cyclist',
+            'components': {
+                'bicycle_frame': {
+                    'vertices': [
+                        [-0.4, 0, 0.3], [0.4, 0, 0.3],  # Main frame
+                        [-0.35, 0, 0.1], [0.35, 0, 0.1],  # Bottom bracket
+                        [0.3, 0, 0.5]  # Handlebars
+                    ],
+                    'connections': [[0, 1], [0, 2], [1, 3], [2, 3], [1, 4]]
+                },
+                'wheels': [
+                    {'position': [-0.4, 0, 0.2], 'radius': 0.3, 'spokes': 12},
+                    {'position': [0.4, 0, 0.2], 'radius': 0.3, 'spokes': 12}
+                ],
+                'rider': {
+                    'position': [0, 0, 0.6],
+                    'pose': 'riding',
+                    'lean_angle': 15  # degrees forward
+                }
+            },
+            'materials': {
+                'frame': {'type': 'metal', 'color': 'variable'},
+                'wheels': {'type': 'rubber', 'roughness': 0.9},
+                'rider': {'type': 'mixed', 'uses_pedestrian_materials': True}
+            }
+        }
+    
+    def generate_model_geometry(self, class_name):
+        """Generate basic geometry for 3D models"""
+        # Simplified geometry definitions
+        return {
+            'type': 'box',  # Can be extended to 'mesh' with actual vertices
+            'subdivision_level': 2
+        }
+    
+    def generate_model_materials(self, class_name):
+        """Generate material definitions for 3D models"""
+        return {
+            'diffuse': 'variable',  # Will use color_variants
+            'specular': 0.5,
+            'roughness': 0.6,
+            'metalness': 0.3 if class_name == 'car' else 0.0
+        }
+    
+    def generate_model_animations(self, class_name):
+        """Generate animation definitions for 3D models"""
+        if class_name == 'pedestrian':
+            return ['idle', 'walk', 'run', 'stand']
+        elif class_name == 'cyclist':
+            return ['pedaling', 'coasting', 'stopped']
+        else:
+            return ['moving', 'stopped']
+    
+    def export_3d_model_library(self):
+        """Export complete 3D model library for web use"""
+        models_dir = os.path.join(self.output_dir, 'web_models')
+        
+        # Export main model library
+        library = {
+            'format_version': '1.0',
+            'export_date': datetime.now().isoformat(),
+            'coordinate_system': 'right_handed_y_up',
+            'units': 'meters',
+            'models': self.export_3d_models(),
+            'materials': {
+                'asphalt': {'diffuse': (60, 60, 60), 'roughness': 0.9},
+                'concrete': {'diffuse': (140, 140, 140), 'roughness': 0.8},
+                'glass': {'diffuse': (50, 50, 70), 'opacity': 0.3, 'reflectivity': 0.7},
+                'metal': {'diffuse': 'variable', 'roughness': 0.4, 'metalness': 0.8},
+                'rubber': {'diffuse': (30, 30, 30), 'roughness': 0.9}
+            },
+            'environments': {
+                'day': {'sun_angle': 45, 'sun_intensity': 1.0, 'ambient': 0.3},
+                'dusk': {'sun_angle': 15, 'sun_intensity': 0.7, 'ambient': 0.2},
+                'night': {'sun_angle': -20, 'sun_intensity': 0.1, 'ambient': 0.1},
+                'dawn': {'sun_angle': 10, 'sun_intensity': 0.6, 'ambient': 0.25}
+            }
+        }
+        
+        with open(os.path.join(models_dir, 'model_library.json'), 'w') as f:
+            json.dump(library, f, indent=2)
+        
+        print(f"Exported 3D model library to {models_dir}")
     
     def generate_dataset(self):
         """Generate complete dataset with realistic scenarios"""
@@ -737,8 +1634,12 @@ class SyntheticTrafficGenerator:
         train_manifest = []
         train_scenarios = []
         
+        # Create directories for 3D models export
+        models_export_dir = os.path.join(self.output_dir, 'web_models')
+        os.makedirs(models_export_dir, exist_ok=True)
+        
         for i in range(self.num_train):
-            # Generate and render scenario
+            # Generate and render scenario with 3D
             img, annotations, scenario_data = self.generate_image_with_annotations(i, 'train')
             
             # Save image
@@ -752,10 +1653,10 @@ class SyntheticTrafficGenerator:
                     f.write(f"{ann['class_id']} {ann['cx']:.6f} {ann['cy']:.6f} "
                            f"{ann['w']:.6f} {ann['h']:.6f}\n")
             
-            # Save scenario for UI training
+            # Save scenario for web interface
             scenario_path = os.path.join(self.output_dir, 'train', 'scenarios', f'{i:06d}.json')
             os.makedirs(os.path.dirname(scenario_path), exist_ok=True)
-            self.export_for_ui_training(scenario_data, scenario_path)
+            self.export_for_web_interface(scenario_data, scenario_path)
             
             train_manifest.append({
                 'image': os.path.basename(image_path),
@@ -791,7 +1692,13 @@ class SyntheticTrafficGenerator:
             
             # Generate scenario with specified parameters
             scenario_data = self.generate_traffic_scenario(scenario_params)
-            img, annotations = self.render_frame(scenario_data)
+            
+            # Select camera for validation
+            camera = self.camera_configs[i % len(self.camera_configs)]
+            scenario_data['camera'] = camera
+            
+            # Render 3D frame
+            img, annotations = self.render_3d_frame(scenario_data, camera)
             
             # Save image
             image_path = os.path.join(self.output_dir, 'val', 'images', f'{i:06d}.jpg')
@@ -883,12 +1790,23 @@ class SyntheticTrafficGenerator:
         with open(os.path.join(self.output_dir, 'dataset_info.json'), 'w') as f:
             json.dump(dataset_info, f, indent=2)
         
+        # Export 3D models for web interface
+        print(f"\nExporting 3D models for web interface...")
+        self.export_3d_model_library()
+        
         print(f"\nDataset generation complete!")
         print(f"Total images: {self.num_train + self.num_val}")
         print(f"Video sequences: {num_sequences} ({frames_per_sequence} frames each)")
         print(f"Classes: cars, pedestrians, cyclists")
         print(f"Scenarios: {', '.join(self.scenario_templates)}")
-        print(f"Format: YOLO (normalized xywh) with scenario metadata")
+        print(f"Camera viewpoints: {len(self.camera_configs)} different angles")
+        print(f"3D models exported to: {models_export_dir}")
+        print(f"Format: YOLO (normalized xywh) with 3D metadata")
+        print(f"\nThe dataset includes:")
+        print(f"- 3D rendered scenes from multiple viewpoints")
+        print(f"- Realistic lighting and weather conditions")
+        print(f"- 3D model exports for web visualization")
+        print(f"- Full scene metadata for each frame")
     
     def calculate_dataset_statistics(self, manifest):
         """Calculate dataset statistics for analysis"""
@@ -970,9 +1888,9 @@ def main():
                 frame_path = os.path.join(seq_preview_dir, f'preview_{idx:03d}.jpg')
                 frame['image'].save(frame_path, 'JPEG', quality=90)
             
-            # Export scenario data for UI
+            # Export scenario data for UI/web interface
             ui_scenario_path = os.path.join(ui_dir, f'scenario_{i:02d}.json')
-            generator.export_for_ui_training(scenario_data, ui_scenario_path)
+            generator.export_for_web_interface(scenario_data, ui_scenario_path)
             
             print(f"  Generated UI scenario {i+1}/5")
         
