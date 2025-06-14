@@ -1,23 +1,85 @@
 #include "training/optimizer.h"
 #include <cmath>
 #include <algorithm>
+#include <stdexcept>
 
 namespace tacs {
 namespace training {
 
 SGDOptimizer::SGDOptimizer(float learning_rate, float momentum, float weight_decay)
-    : learning_rate_(learning_rate), momentum_(momentum), weight_decay_(weight_decay) {}
+    : learning_rate_(learning_rate), momentum_(momentum), weight_decay_(weight_decay) {
+    if (learning_rate <= 0.0f) {
+        throw std::invalid_argument("Learning rate must be positive");
+    }
+    if (momentum < 0.0f || momentum >= 1.0f) {
+        throw std::invalid_argument("Momentum must be in range [0, 1)");
+    }
+    if (weight_decay < 0.0f) {
+        throw std::invalid_argument("Weight decay must be non-negative");
+    }
+}
 
 void SGDOptimizer::step() {
-    // In production systems, parameter updates would be handled through
-    // the model's apply_gradients method which is already implemented
-    // The optimizer maintains state for momentum-based updates
+    // Apply parameter updates with momentum and weight decay
+    for (auto& [name, param_info] : parameters_) {
+        if (param_info.gradient.size() == 0) {
+            continue; // Skip parameters without gradients
+        }
+        
+        update_parameter(name, param_info.gradient, param_info.parameter);
+    }
 }
 
 void SGDOptimizer::zero_grad() {
+    // Clear all gradients
+    for (auto& [name, param_info] : parameters_) {
+        if (param_info.gradient.size() > 0) {
+            param_info.gradient.zero();
+        }
+    }
+    
     // Clear velocity terms for momentum
     for (auto& [name, vel] : velocity_) {
         vel.zero();
+    }
+}
+
+void SGDOptimizer::add_parameter_group(const std::string& name, core::Tensor& parameter) {
+    if (parameters_.find(name) != parameters_.end()) {
+        throw std::runtime_error("Parameter " + name + " already exists");
+    }
+    
+    ParameterInfo info;
+    info.parameter = parameter;
+    info.gradient = core::Tensor(parameter.shape());
+    info.gradient.zero();
+    
+    parameters_[name] = info;
+    
+    // Initialize velocity for momentum
+    if (momentum_ > 0.0f) {
+        velocity_.emplace(name, core::Tensor(parameter.shape()));
+        velocity_[name].zero();
+    }
+}
+
+void SGDOptimizer::set_gradient(const std::string& name, const core::Tensor& gradient) {
+    auto it = parameters_.find(name);
+    if (it == parameters_.end()) {
+        throw std::runtime_error("Parameter " + name + " not found");
+    }
+    
+    if (gradient.size() != it->second.parameter.size()) {
+        throw std::runtime_error("Gradient size mismatch for parameter " + name);
+    }
+    
+    // Copy gradient data
+    const float* grad_data = gradient.data_float();
+    float* stored_grad = it->second.gradient.data_float();
+    size_t size = gradient.size();
+    
+    for (size_t i = 0; i < size; ++i) {
+        stored_grad[i] = grad_data[i];
     }
 }
 
@@ -33,40 +95,40 @@ void SGDOptimizer::update_parameter(const std::string& param_name,
     }
     
     // Initialize velocity if not exists
-    if (velocity_.find(param_name) == velocity_.end()) {
+    if (momentum_ > 0.0f && velocity_.find(param_name) == velocity_.end()) {
         velocity_.emplace(param_name, core::Tensor(parameter.shape()));
         velocity_[param_name].zero();
     }
     
     const float* grad_data = gradient.data_float();
     float* param_data = parameter.data_float();
-    float* vel_data = velocity_[param_name].data_float();
-    
     size_t size = parameter.size();
     
     if (momentum_ > 0.0f) {
-        // SGD with momentum: v = momentum * v + (1 - dampening) * g
-        // param = param - lr * v
+        float* vel_data = velocity_[param_name].data_float();
+        
+        // SGD with momentum: v = momentum * v + lr * (g + weight_decay * param)
+        // param = param - v
         for (size_t i = 0; i < size; ++i) {
             float grad_val = grad_data[i];
             
-            // Apply weight decay if specified
+            // Apply weight decay (L2 regularization)
             if (weight_decay_ > 0.0f) {
                 grad_val += weight_decay_ * param_data[i];
             }
             
             // Update velocity with momentum
-            vel_data[i] = momentum_ * vel_data[i] + grad_val;
+            vel_data[i] = momentum_ * vel_data[i] + learning_rate_ * grad_val;
             
             // Update parameter
-            param_data[i] -= learning_rate_ * vel_data[i];
+            param_data[i] -= vel_data[i];
         }
     } else {
         // Standard SGD without momentum
         for (size_t i = 0; i < size; ++i) {
             float grad_val = grad_data[i];
             
-            // Apply weight decay if specified
+            // Apply weight decay
             if (weight_decay_ > 0.0f) {
                 grad_val += weight_decay_ * param_data[i];
             }
@@ -77,17 +139,96 @@ void SGDOptimizer::update_parameter(const std::string& param_name,
     }
 }
 
+float SGDOptimizer::get_learning_rate() const {
+    return learning_rate_;
+}
+
+void SGDOptimizer::set_learning_rate(float lr) {
+    if (lr <= 0.0f) {
+        throw std::invalid_argument("Learning rate must be positive");
+    }
+    learning_rate_ = lr;
+}
+
 AdamOptimizer::AdamOptimizer(float learning_rate, float beta1, float beta2, float eps, float weight_decay)
     : learning_rate_(learning_rate), beta1_(beta1), beta2_(beta2), eps_(eps), 
-      weight_decay_(weight_decay), step_count_(0) {}
+      weight_decay_(weight_decay), step_count_(0) {
+    if (learning_rate <= 0.0f) {
+        throw std::invalid_argument("Learning rate must be positive");
+    }
+    if (beta1 < 0.0f || beta1 >= 1.0f) {
+        throw std::invalid_argument("Beta1 must be in range [0, 1)");
+    }
+    if (beta2 < 0.0f || beta2 >= 1.0f) {
+        throw std::invalid_argument("Beta2 must be in range [0, 1)");
+    }
+    if (eps <= 0.0f) {
+        throw std::invalid_argument("Epsilon must be positive");
+    }
+    if (weight_decay < 0.0f) {
+        throw std::invalid_argument("Weight decay must be non-negative");
+    }
+}
 
 void AdamOptimizer::step() {
     step_count_++;
+    
+    // Apply parameter updates
+    for (auto& [name, param_info] : parameters_) {
+        if (param_info.gradient.size() == 0) {
+            continue; // Skip parameters without gradients
+        }
+        
+        update_parameter(name, param_info.gradient, param_info.parameter);
+    }
 }
 
 void AdamOptimizer::zero_grad() {
-    // Adam maintains first and second moment estimates
-    // These are preserved across gradient steps
+    // Clear all gradients
+    for (auto& [name, param_info] : parameters_) {
+        if (param_info.gradient.size() > 0) {
+            param_info.gradient.zero();
+        }
+    }
+}
+
+void AdamOptimizer::add_parameter_group(const std::string& name, core::Tensor& parameter) {
+    if (parameters_.find(name) != parameters_.end()) {
+        throw std::runtime_error("Parameter " + name + " already exists");
+    }
+    
+    ParameterInfo info;
+    info.parameter = parameter;
+    info.gradient = core::Tensor(parameter.shape());
+    info.gradient.zero();
+    
+    parameters_[name] = info;
+    
+    // Initialize moment estimates
+    m_.emplace(name, core::Tensor(parameter.shape()));
+    m_[name].zero();
+    v_.emplace(name, core::Tensor(parameter.shape()));
+    v_[name].zero();
+}
+
+void AdamOptimizer::set_gradient(const std::string& name, const core::Tensor& gradient) {
+    auto it = parameters_.find(name);
+    if (it == parameters_.end()) {
+        throw std::runtime_error("Parameter " + name + " not found");
+    }
+    
+    if (gradient.size() != it->second.parameter.size()) {
+        throw std::runtime_error("Gradient size mismatch for parameter " + name);
+    }
+    
+    // Copy gradient data
+    const float* grad_data = gradient.data_float();
+    float* stored_grad = it->second.gradient.data_float();
+    size_t size = gradient.size();
+    
+    for (size_t i = 0; i < size; ++i) {
+        stored_grad[i] = grad_data[i];
+    }
 }
 
 void AdamOptimizer::update_parameter(const std::string& param_name,
@@ -123,6 +264,10 @@ void AdamOptimizer::update_parameter(const std::string& param_name,
     float bias_correction1 = 1.0f - std::pow(beta1_, step_count_);
     float bias_correction2 = 1.0f - std::pow(beta2_, step_count_);
     
+    // Avoid division by zero
+    bias_correction1 = std::max(bias_correction1, eps_);
+    bias_correction2 = std::max(bias_correction2, eps_);
+    
     for (size_t i = 0; i < size; ++i) {
         float grad_val = grad_data[i];
         
@@ -143,9 +288,26 @@ void AdamOptimizer::update_parameter(const std::string& param_name,
         // Compute bias-corrected second raw moment estimate
         float v_hat = v_data[i] / bias_correction2;
         
-        // Update parameter with numerical stability
-        param_data[i] -= learning_rate_ * m_hat / (std::sqrt(v_hat) + eps_);
+        // Update parameter with numerical stability and gradient clipping
+        float update = learning_rate_ * m_hat / (std::sqrt(v_hat) + eps_);
+        
+        // Gradient clipping for numerical stability
+        const float max_update = 10.0f;
+        update = std::clamp(update, -max_update, max_update);
+        
+        param_data[i] -= update;
     }
+}
+
+float AdamOptimizer::get_learning_rate() const {
+    return learning_rate_;
+}
+
+void AdamOptimizer::set_learning_rate(float lr) {
+    if (lr <= 0.0f) {
+        throw std::invalid_argument("Learning rate must be positive");
+    }
+    learning_rate_ = lr;
 }
 
 void AdamOptimizer::reset() {

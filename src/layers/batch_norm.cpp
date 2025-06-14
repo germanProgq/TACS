@@ -31,7 +31,8 @@ core::Tensor BatchNorm2D::forward(const core::Tensor& input, bool training) {
     int width = input_shape[3];
     
     if (channels != num_features_) {
-        throw std::runtime_error("Input channels mismatch");
+        throw std::runtime_error("BatchNorm2D: Input channels mismatch. Expected " + 
+                                std::to_string(num_features_) + ", got " + std::to_string(channels));
     }
     
     core::Tensor output = input;
@@ -247,7 +248,7 @@ core::Tensor BatchNorm2D::forward(const core::Tensor& input, bool training) {
     return output;
 }
 
-void BatchNorm2D::backward(const core::Tensor& grad_output, const core::Tensor& input,
+core::Tensor BatchNorm2D::backward(const core::Tensor& grad_output, const core::Tensor& input,
                            const core::Tensor& normalized) {
     const auto& input_shape = input.shape();
     int batch_size = input_shape[0];
@@ -257,32 +258,69 @@ void BatchNorm2D::backward(const core::Tensor& grad_output, const core::Tensor& 
     
     const float* grad_data = grad_output.data_float();
     const float* normalized_data = normalized.data_float();
+    const float* weight_data = weight_.data_float();
     float* weight_grad_data = weight_grad_.data_float();
     float* bias_grad_data = bias_grad_.data_float();
+    
+    // Initialize gradient w.r.t input
+    core::Tensor grad_input(input_shape);
+    float* grad_input_data = grad_input.data_float();
     
     weight_grad_.zero();
     bias_grad_.zero();
     
     int spatial_size = height * width;
     int total_elements = batch_size * spatial_size;
+    float norm_factor = 1.0f / total_elements;
     
+    // Compute gradients for each channel
     for (int c = 0; c < channels; ++c) {
         float grad_weight_sum = 0.0f;
         float grad_bias_sum = 0.0f;
+        float mean_dy = 0.0f;
+        float mean_dy_xhat = 0.0f;
         
+        // First pass: compute sums
         for (int n = 0; n < batch_size; ++n) {
             for (int h = 0; h < height; ++h) {
                 for (int w = 0; w < width; ++w) {
                     int idx = n * channels * height * width + c * height * width + h * width + w;
-                    grad_weight_sum += grad_data[idx] * normalized_data[idx];
-                    grad_bias_sum += grad_data[idx];
+                    float dy = grad_data[idx];
+                    float xhat = normalized_data[idx];
+                    
+                    grad_weight_sum += dy * xhat;
+                    grad_bias_sum += dy;
+                    mean_dy += dy;
+                    mean_dy_xhat += dy * xhat;
                 }
             }
         }
         
         weight_grad_data[c] = grad_weight_sum;
         bias_grad_data[c] = grad_bias_sum;
+        
+        mean_dy *= norm_factor;
+        mean_dy_xhat *= norm_factor;
+        
+        // Second pass: compute gradient w.r.t input
+        float gamma = weight_data[c];
+        float inv_std = 1.0f / std::sqrt(running_var_.data_float()[c] + eps_);
+        
+        for (int n = 0; n < batch_size; ++n) {
+            for (int h = 0; h < height; ++h) {
+                for (int w = 0; w < width; ++w) {
+                    int idx = n * channels * height * width + c * height * width + h * width + w;
+                    float dy = grad_data[idx];
+                    float xhat = normalized_data[idx];
+                    
+                    // BatchNorm backward pass formula
+                    grad_input_data[idx] = gamma * inv_std * (dy - mean_dy - xhat * mean_dy_xhat);
+                }
+            }
+        }
     }
+    
+    return grad_input;
 }
 
 void BatchNorm2D::zero_grad() {

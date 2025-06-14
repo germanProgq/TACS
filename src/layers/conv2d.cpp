@@ -30,7 +30,8 @@ core::Tensor Conv2D::forward(const core::Tensor& input) {
     int width = input_shape[3];
     
     if (channels != in_channels_) {
-        throw std::runtime_error("Input channels mismatch");
+        throw std::runtime_error("Conv2D: Input channels mismatch. Expected " + 
+                                std::to_string(in_channels_) + ", got " + std::to_string(channels));
     }
     
     int output_height = (height + 2 * padding_ - kernel_size_) / stride_ + 1;
@@ -48,7 +49,7 @@ core::Tensor Conv2D::forward(const core::Tensor& input) {
     return output;
 }
 
-void Conv2D::backward(const core::Tensor& grad_output, const core::Tensor& input) {
+core::Tensor Conv2D::backward(const core::Tensor& grad_output, const core::Tensor& input) {
     const auto& input_shape = input.shape();
     const auto& grad_shape = grad_output.shape();
     
@@ -60,13 +61,20 @@ void Conv2D::backward(const core::Tensor& grad_output, const core::Tensor& input
     
     const float* grad_data = grad_output.data_float();
     const float* input_data = input.data_float();
+    const float* weight_data = weight_.data_float();
     float* weight_grad_data = weight_grad_.data_float();
+    
+    // Initialize gradient w.r.t input
+    core::Tensor grad_input(input_shape);
+    grad_input.zero();
+    float* grad_input_data = grad_input.data_float();
     
     weight_grad_.zero();
     if (has_bias_) {
         bias_grad_.zero();
     }
     
+    // Compute gradients w.r.t weights, bias, and input
     for (int n = 0; n < batch_size; ++n) {
         for (int oc = 0; oc < out_channels_; ++oc) {
             for (int oh = 0; oh < output_height; ++oh) {
@@ -88,10 +96,14 @@ void Conv2D::backward(const core::Tensor& grad_output, const core::Tensor& input
                                 if (ih >= 0 && ih < input_height && iw >= 0 && iw < input_width) {
                                     int input_idx = n * in_channels_ * input_height * input_width +
                                                     ic * input_height * input_width + ih * input_width + iw;
-                                    int weight_grad_idx = oc * in_channels_ * kernel_size_ * kernel_size_ +
-                                                          ic * kernel_size_ * kernel_size_ + kh * kernel_size_ + kw;
+                                    int weight_idx = oc * in_channels_ * kernel_size_ * kernel_size_ +
+                                                     ic * kernel_size_ * kernel_size_ + kh * kernel_size_ + kw;
                                     
-                                    weight_grad_data[weight_grad_idx] += grad_val * input_data[input_idx];
+                                    // Gradient w.r.t weights
+                                    weight_grad_data[weight_idx] += grad_val * input_data[input_idx];
+                                    
+                                    // Gradient w.r.t input
+                                    grad_input_data[input_idx] += grad_val * weight_data[weight_idx];
                                 }
                             }
                         }
@@ -100,6 +112,8 @@ void Conv2D::backward(const core::Tensor& grad_output, const core::Tensor& input
             }
         }
     }
+    
+    return grad_input;
 }
 
 void Conv2D::zero_grad() {

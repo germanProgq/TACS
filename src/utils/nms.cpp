@@ -54,12 +54,12 @@ std::vector<NMSDetection> NonMaxSuppression::decode_predictions(const models::De
     
     const float* bbox_data = prediction.bbox_predictions.data_float();
     const float* obj_data = prediction.objectness_scores.data_float();
-    const float* cls_data = prediction.class_probabilities.data_float();
+    const float* cls_data = prediction.class_predictions.data_float();
     
     const auto& bbox_shape = prediction.bbox_predictions.shape();
     int batch_size = bbox_shape[0];
     int num_anchors = bbox_shape[1];
-    int num_classes = prediction.class_probabilities.shape()[4];
+    int num_classes = prediction.class_predictions.shape()[4];
     
     // Process only first batch for inference
     for (int a = 0; a < num_anchors; ++a) {

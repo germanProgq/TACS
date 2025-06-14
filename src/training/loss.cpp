@@ -21,7 +21,7 @@ float YOLOLoss::compute_loss(const std::vector<models::DetectionOutput>& predict
         const auto& pred = predictions[scale];
         const auto& pred_bbox = pred.bbox_predictions;
         const auto& pred_obj = pred.objectness_scores;
-        const auto& pred_cls = pred.class_probabilities;
+        const auto& pred_cls = pred.class_predictions;
         
         const auto& bbox_shape = pred_bbox.shape();
         int batch_size = bbox_shape[0];
@@ -66,7 +66,7 @@ std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::Detection
         const auto& pred = predictions[scale];
         const auto& pred_bbox = pred.bbox_predictions;
         const auto& pred_obj = pred.objectness_scores;
-        const auto& pred_cls = pred.class_probabilities;
+        const auto& pred_cls = pred.class_predictions;
         
         const auto& bbox_shape = pred_bbox.shape();
         int batch_size = bbox_shape[0];

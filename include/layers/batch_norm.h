@@ -19,7 +19,7 @@ public:
     ~BatchNorm2D() = default;
 
     core::Tensor forward(const core::Tensor& input, bool training = true);
-    void backward(const core::Tensor& grad_output, const core::Tensor& input, 
+    core::Tensor backward(const core::Tensor& grad_output, const core::Tensor& input, 
                   const core::Tensor& normalized);
     
     const core::Tensor& weight() const { return weight_; }

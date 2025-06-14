@@ -21,7 +21,7 @@ public:
                     int stride = 1, int padding = 0, float multiplier = 1.0f);
     
     core::Tensor forward(const core::Tensor& input);
-    void backward(const core::Tensor& grad_output, const core::Tensor& input);
+    core::Tensor backward(const core::Tensor& grad_output, const core::Tensor& input);
     
     void zero_grad();
     void apply_gradients(float learning_rate);

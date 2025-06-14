@@ -35,17 +35,34 @@ endif()
 
 include_directories(include)
 
-set(SOURCES
+# Core Phase 2 sources
+set(PHASE2_SOURCES
     src/core/tensor.cpp
     src/core/memory_manager.cpp
+    src/core/tensor_ops.cpp
     src/layers/conv2d.cpp
     src/layers/batch_norm.cpp
     src/layers/leaky_relu.cpp
     src/layers/depthwise_conv2d.cpp
     src/models/tacsnet.cpp
-    src/models/tacsnet_optimized.cpp
-    src/models/tacsnet_int8.cpp
-    src/models/tacsnet_ultra.cpp
+    src/training/loss.cpp
+    src/utils/matrix_ops.cpp
+    src/utils/nms.cpp
+    src/utils/quantization.cpp
+)
+
+set(SOURCES
+    src/core/tensor.cpp
+    src/core/memory_manager.cpp
+    src/core/tensor_ops.cpp
+    src/layers/conv2d.cpp
+    src/layers/batch_norm.cpp
+    src/layers/leaky_relu.cpp
+    src/layers/depthwise_conv2d.cpp
+    src/models/tacsnet.cpp
+    src/models/accidentnet.cpp
+    src/models/weathernet.cpp
+    src/models/tacs_pipeline.cpp
     src/training/optimizer.cpp
     src/training/loss.cpp
     src/data/data_loader.cpp
@@ -82,8 +99,9 @@ set(HEADERS
 )
 
 add_executable(phase1_validation phase1_validation.cpp ${SOURCES})
-add_executable(phase2_validation phase2_validation.cpp ${SOURCES})
+add_executable(phase2_validation phase2_validation.cpp ${PHASE2_SOURCES})
 add_executable(phase3_validation phase3_validation.cpp ${SOURCES})
+add_executable(phase4_validation phase4_validation.cpp ${SOURCES})
 
 find_package(GTest QUIET)
 if(GTest_FOUND)

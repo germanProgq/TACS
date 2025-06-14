@@ -1,5 +1,5 @@
 #include "utils/batch_inference.h"
-#include "models/tacsnet_optimized.h"
+#include "models/tacsnet.h"
 #include <chrono>
 #include <algorithm>
 #include <numeric>

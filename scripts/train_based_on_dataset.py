@@ -155,7 +155,7 @@ class TACSNetTrainer:
 #include <cstdlib>
 #include <algorithm>
 
-#include "models/tacsnet_ultra.h"
+#include "models/tacsnet.h"
 #include "data/data_loader.h"
 #include "training/optimizer.h"
 #include "training/loss.h"

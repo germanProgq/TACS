@@ -20,7 +20,7 @@ public:
     ~Conv2D() = default;
 
     core::Tensor forward(const core::Tensor& input);
-    void backward(const core::Tensor& grad_output, const core::Tensor& input);
+    core::Tensor backward(const core::Tensor& grad_output, const core::Tensor& input);
     
     const core::Tensor& weight() const { return weight_; }
     const core::Tensor& bias() const { return bias_; }
