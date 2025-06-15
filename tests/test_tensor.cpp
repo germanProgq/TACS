@@ -10,7 +10,7 @@
 
 using namespace tacs::core;
 
-// NASA-level testing constants
+// Production-level testing constants
 constexpr float EPSILON = 1e-6f;
 constexpr int STRESS_TEST_ITERATIONS = 10000;
 constexpr int CONCURRENT_THREADS = 8;
@@ -95,7 +95,7 @@ TEST_F(TensorTest, MoveConstructor) {
     EXPECT_FLOAT_EQ(t2({0, 0}), 2.71f);
 }
 
-// NASA-level reliability tests
+// Production-level reliability tests
 TEST_F(TensorTest, MemoryAlignmentVerification) {
     Tensor t({64, 64, 32});
     auto* data_ptr = t.data();

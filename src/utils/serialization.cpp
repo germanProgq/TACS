@@ -145,8 +145,7 @@ bool ModelSerializer::load_model(models::TACSNet& model, const std::string& file
         return false;
     }
     
-    // Production implementation: anchors are validated but not dynamically set
-    // TACSNet uses fixed anchor configuration for production stability
+    // TACSNet uses fixed anchor configuration
     
     file.close();
     return true;

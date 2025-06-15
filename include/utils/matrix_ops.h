@@ -4,7 +4,7 @@
  * 
  * Provides optimized implementations with SIMD vectorization, multi-threading,
  * and advanced cache optimization techniques for sub-50ms inference performance.
- * Production-ready implementation meeting NASA-level reliability standards.
+ * Production-ready implementation meeting industry reliability standards.
  */
 #pragma once
 

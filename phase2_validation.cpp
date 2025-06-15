@@ -1,13 +1,5 @@
 /**
- * Phase 2 Production-Ready Validation Program
- * Validates multi-class detection, GIoU loss, NMS, and FP16 quantization
- * 
- * Tests all Phase 2 components for production deployment:
- * - Multi-class detection (cars, pedestrians, cyclists)
- * - GIoU loss for accurate bounding box regression
- * - Class-specific NMS post-processing 
- * - FP16 quantization for performance optimization
- * - Ultra-optimized TACSNet architecture
+ * Phase 2 Validation - Multi-class detection, GIoU loss, NMS, and FP16 quantization
  */
 #include <iostream>
 #include <chrono>
@@ -29,19 +21,14 @@ using namespace std::chrono;
 void test_multiclass_detection() {
     std::cout << "\n=== Testing Multi-Class Detection (Cars, Pedestrians, Cyclists) ===" << std::endl;
     
-    // Test basic TACSNet for functional validation
     models::TACSNet basic_model;
     basic_model.set_training(false);
     
-    // Test ultra-optimized version for performance validation
     models::TACSNetUltra ultra_model;
     ultra_model.set_training(false);
     
-    // Create test input (batch_size=1, channels=3, height=416, width=416)
     core::Tensor input({1, 3, 416, 416});
     float* data = input.data_float();
-    
-    // Initialize with realistic traffic scene pattern
     std::mt19937 gen(42);
     std::normal_distribution<float> dist(0.5f, 0.1f);
     for (size_t i = 0; i < input.size(); ++i) {
@@ -88,7 +75,6 @@ void test_multiclass_detection() {
     std::cout << "Single run inference: " << std::fixed << std::setprecision(3) 
               << avg_duration << "ms" << std::endl;
     
-    // Test FP16 quantization capabilities
     std::cout << "\nTesting FP16 quantization support:" << std::endl;
     std::vector<utils::fp16_t> fp16_data;
     utils::FP16Quantization::quantize_tensor(input, fp16_data);
@@ -129,17 +115,12 @@ void test_giou_loss() {
     
     // Note: compute_giou is private, so we test it through the loss computation
     
-    // Test loss computation with realistic predictions
     models::TACSNet model;
     core::Tensor input({1, 3, 416, 416});
     auto predictions = model.forward(input, true);
     
-    // Create dummy targets (batch_size=1, max_objects=50, attributes=5)
     core::Tensor targets({1, 50, 5});
     float* target_data = targets.data_float();
-    
-    // Add a few target objects
-    // Car at center
     target_data[0] = 0.0f; // class_id (car)
     target_data[1] = 0.5f; // cx
     target_data[2] = 0.5f; // cy
@@ -179,10 +160,7 @@ void test_nms() {
     
     utils::NonMaxSuppression nms(config);
     
-    // Create test detections
     std::vector<utils::NMSDetection> test_detections;
-    
-    // Add overlapping car detections
     for (int i = 0; i < 5; ++i) {
         utils::NMSDetection det;
         det.x = 200.0f + i * 10.0f;
@@ -195,7 +173,6 @@ void test_nms() {
         test_detections.push_back(det);
     }
     
-    // Add pedestrian detections
     for (int i = 0; i < 3; ++i) {
         utils::NMSDetection det;
         det.x = 100.0f + i * 15.0f;
@@ -208,7 +185,6 @@ void test_nms() {
         test_detections.push_back(det);
     }
     
-    // Add cyclist detection
     utils::NMSDetection cyclist;
     cyclist.x = 350.0f;
     cyclist.y = 200.0f;
@@ -262,7 +238,6 @@ void test_nms() {
 void test_fp16_quantization() {
     std::cout << "\n=== Testing FP16 Quantization ===" << std::endl;
     
-    // Test FP16 conversion accuracy
     std::vector<float> test_values = {0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 
                                       1e-5f, 1e5f, 3.14159f, -2.71828f};
     
@@ -283,18 +258,14 @@ void test_fp16_quantization() {
         }
     }
     
-    // Test quantized convolution performance
     std::cout << "\nTesting FP16 convolution performance:" << std::endl;
     
-    // Create test tensors
     int batch = 1, channels = 64, height = 52, width = 52;
     int out_channels = 128, kernel_size = 3;
     
     core::Tensor input({batch, channels, height, width});
     core::Tensor weights({out_channels, channels, kernel_size, kernel_size});
     core::Tensor output({batch, out_channels, height, width});
-    
-    // Initialize with random values
     std::mt19937 gen(42);
     std::normal_distribution<float> dist(0.0f, 0.1f);
     

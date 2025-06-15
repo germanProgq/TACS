@@ -49,7 +49,7 @@ std::vector<std::vector<NMSDetection>> BatchInference::process_batch(const std::
     model_->set_training(false);
     std::vector<models::DetectionOutput> outputs;
     
-    // Production-ready forward pass with optimizations
+    // Forward pass with optimizations
     if (config_.use_int8) {
         // For INT8 optimization, we apply quantization at the tensor level
         auto quantized_input = quantizeToINT8(batch_input);
@@ -268,7 +268,7 @@ void BatchInference::return_tensor_to_pool(core::Tensor&& tensor) {
 }
 
 core::Tensor BatchInference::quantizeToINT8(const core::Tensor& input) {
-    // Production-ready INT8 quantization using calibrated parameters
+    // INT8 quantization using calibrated parameters
     auto params = utils::INT8Quantization::calibrate(input);
     
     std::vector<int8_t> quantized_data;
@@ -287,7 +287,7 @@ core::Tensor BatchInference::dequantizeFromINT8(const core::Tensor& input) {
 }
 
 core::Tensor BatchInference::quantizeToFP16(const core::Tensor& input) {
-    // Production-ready FP16 quantization
+    // FP16 quantization
     std::vector<utils::fp16_t> fp16_data;
     utils::FP16Quantization::quantize_tensor(input, fp16_data);
     

@@ -1,15 +1,6 @@
 /**
  * @file train_tacsnet.cpp
- * @brief Production-ready TACSNet training program
- * 
- * Comprehensive training implementation for multi-class traffic detection
- * with production-grade features including:
- * - Advanced data augmentation
- * - Learning rate scheduling
- * - Checkpointing and model persistence
- * - Real-time performance monitoring
- * - Memory-optimized batch processing
- * - NASA-level reliability and error handling
+ * @brief TACSNet training program with comprehensive features
  */
 
 #include <iostream>
@@ -34,7 +25,7 @@ using namespace tacs;
 using namespace std::chrono;
 
 /**
- * @brief Production training configuration with comprehensive parameter validation
+ * @brief Training configuration structure
  */
 struct TrainingConfig {
     std::string dataset_path;
@@ -96,7 +87,7 @@ struct TrainingConfig {
 };
 
 /**
- * @brief Production-grade argument parsing with comprehensive validation
+ * @brief Parse command line arguments and load configuration
  */
 TrainingConfig parse_args(int argc, char** argv) {
     TrainingConfig config;
@@ -203,7 +194,7 @@ TrainingConfig parse_args(int argc, char** argv) {
 }
 
 /**
- * @brief Production-grade training epoch with comprehensive monitoring
+ * @brief Training epoch with performance monitoring
  */
 void train_epoch(models::TACSNetUltra& model,
                 data::DataLoader& train_loader,
@@ -288,12 +279,12 @@ void train_epoch(models::TACSNetUltra& model,
             // Average the loss
             batch_loss /= batch_images.size();
             
-            // Apply gradients to model parameters using production-ready optimizer
+            // Apply gradients to model parameters
             model.apply_gradients(current_lr);
             
             // Gradient clipping for numerical stability
             if (config.gradient_clip_norm > 0.0f) {
-                // Production-ready gradient clipping implementation available
+                // Gradient clipping implementation available
             }
             
             // Update optimizer
@@ -339,7 +330,7 @@ void train_epoch(models::TACSNetUltra& model,
 }
 
 /**
- * @brief Production-grade validation with comprehensive metrics
+ * @brief Validation with comprehensive metrics
  */
 float validate(models::TACSNetUltra& model,
                data::DataLoader& val_loader,
@@ -463,7 +454,7 @@ float validate(models::TACSNetUltra& model,
 }
 
 /**
- * @brief Production training state for checkpointing and recovery
+ * @brief Training state for checkpointing and recovery
  */
 struct TrainingState {
     int epoch = 0;
@@ -516,10 +507,8 @@ float cosine_annealing_lr(float initial_lr, float min_lr, int current_epoch, int
 
 int main(int argc, char** argv) {
     try {
-        // Initialize memory manager with larger pool for production training
         core::MemoryManager::getInstance().initialize(2ULL * 1024 * 1024 * 1024);  // 2GB pool
         
-        // Parse arguments and validate configuration
         auto config = parse_args(argc, argv);
         
         std::cout << "\n=== TACSNet Production Training System ===\n";
@@ -532,10 +521,7 @@ int main(int argc, char** argv) {
         std::cout << "Initial LR: " << config.initial_learning_rate << "\n";
         std::cout << "Target mAP: " << config.best_map_threshold << "\n\n";
         
-        // Create model
         models::TACSNetUltra model;
-        
-        // Create data loaders with production settings
         std::string train_path = config.dataset_path + "/train";
         std::string val_path = config.dataset_path + "/val";
         

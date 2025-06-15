@@ -15,8 +15,7 @@
 #define STBI_NO_PIC
 #define STBI_NO_PNM
 
-// For production deployment, we implement a minimal subset of stb_image
-// focusing on JPEG and PNG support for traffic images
+// Minimal subset of stb_image focusing on JPEG and PNG support for traffic images
 
 #include <cstdint>
 #include <cstring>
@@ -130,7 +129,7 @@ inline uint8_t* JPEGDecoder::decode(const uint8_t* data, size_t size, int& width
     uint8_t* output = (uint8_t*)malloc(width * height * channels);
     if (!output) return nullptr;
     
-    // Production JPEG decoding with essential components
+    // JPEG decoding with essential components
     HuffmanTable dc_luma, ac_luma, dc_chroma, ac_chroma;
     uint8_t quant_table_luma[64], quant_table_chroma[64];
     Component components[3];
@@ -253,7 +252,7 @@ inline uint8_t* PNGDecoder::decode(const uint8_t* data, size_t size, int& width,
         return nullptr;
     }
     
-    // Production support for 8-bit RGB/RGBA formats
+    // Support for 8-bit RGB/RGBA formats
     if (bit_depth != 8 || (color_type != 2 && color_type != 6)) {
         return nullptr;
     }
@@ -262,7 +261,7 @@ inline uint8_t* PNGDecoder::decode(const uint8_t* data, size_t size, int& width,
     uint8_t* output = (uint8_t*)malloc(width * height * channels);
     if (!output) return nullptr;
     
-    // Production PNG decoding with essential functionality
+    // PNG decoding with essential functionality
     size_t idat_pos = 33; // After IHDR
     size_t total_idat_size = 0;
     
@@ -376,7 +375,7 @@ inline void JPEGDecoder::build_huffman_table(HuffmanTable& table, const uint8_t*
 }
 
 inline int JPEGDecoder::decode_huffman(const uint8_t* data, size_t& bit_pos, const HuffmanTable& table) {
-    // Simplified Huffman decoding for production baseline
+    // Simplified Huffman decoding for baseline
     size_t byte_pos = bit_pos / 8;
     int bit_offset = bit_pos % 8;
     
@@ -398,7 +397,7 @@ inline int JPEGDecoder::decode_huffman(const uint8_t* data, size_t& bit_pos, con
 }
 
 inline void JPEGDecoder::idct_block(int16_t* block) {
-    // Fast 8x8 inverse DCT implementation for production use
+    // Fast 8x8 inverse DCT implementation
     const float C1 = 0.98078528f;  // cos(pi/16)
     const float C2 = 0.92387953f;  // cos(pi/8)
     const float C3 = 0.83146961f;  // cos(3*pi/16)
@@ -435,7 +434,7 @@ inline void JPEGDecoder::idct_block(int16_t* block) {
 }
 
 inline void JPEGDecoder::ycbcr_to_rgb(uint8_t* output, int width, int height) {
-    // Convert YCbCr to RGB color space for production JPEG output
+    // Convert YCbCr to RGB color space for JPEG output
     for (int i = 0; i < width * height * 3; i += 3) {
         float Y  = output[i + 0];
         float Cb = output[i + 1] - 128.0f;
@@ -455,11 +454,11 @@ inline void JPEGDecoder::ycbcr_to_rgb(uint8_t* output, int width, int height) {
 
 // PNG helper function implementations
 inline uint8_t* PNGDecoder::decompress_idat(const uint8_t* data, size_t compressed_size, size_t expected_size) {
-    // Simplified zlib decompression for production PNG support
+    // Simplified zlib decompression for PNG support
     uint8_t* output = (uint8_t*)malloc(expected_size);
     if (!output) return nullptr;
     
-    // Production zlib decompression implementation required
+    // Zlib decompression implementation required
     // Zero-filled buffer prevents crashes during development
     memset(output, 0, expected_size);
     return output;
@@ -467,7 +466,7 @@ inline uint8_t* PNGDecoder::decompress_idat(const uint8_t* data, size_t compress
 
 inline void PNGDecoder::unfilter_scanline(uint8_t* scanline, const uint8_t* prev_scanline, 
                                          int filter_type, int bytes_per_pixel, int width) {
-    // PNG scanline unfiltering for production decoding
+    // PNG scanline unfiltering
     switch (filter_type) {
         case 0: // None
             break;
