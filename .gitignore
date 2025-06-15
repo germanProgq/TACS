@@ -100,6 +100,7 @@ venv/
 
 # Documentation artifacts
 plan.txt
+after.txt
 task.txt
 traffic_app.txt
 notes.txt

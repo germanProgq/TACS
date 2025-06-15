@@ -36,11 +36,11 @@ TEST_F(TACSNetTest, ForwardPass) {
     for (const auto& output : outputs) {
         EXPECT_GT(output.bbox_predictions.size(), 0);
         EXPECT_GT(output.objectness_scores.size(), 0);
-        EXPECT_GT(output.class_probabilities.size(), 0);
+        EXPECT_GT(output.class_predictions.size(), 0);
         
         const auto& bbox_shape = output.bbox_predictions.shape();
         const auto& obj_shape = output.objectness_scores.shape();
-        const auto& cls_shape = output.class_probabilities.shape();
+        const auto& cls_shape = output.class_predictions.shape();
         
         EXPECT_EQ(bbox_shape[0], 1);
         EXPECT_EQ(bbox_shape[1], 3);

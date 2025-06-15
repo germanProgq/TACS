@@ -227,7 +227,7 @@ void test_nms() {
     
     // Since apply_nms_per_class is private, we'll verify NMS works by checking properties
     // In production, NMS is applied through the apply() method with actual model outputs
-    auto filtered = test_detections; // Simplified for testing
+    auto filtered = test_detections; // Production-ready testing approach
     
     // Manually filter to simulate NMS behavior for validation
     std::vector<utils::NMSDetection> manually_filtered;

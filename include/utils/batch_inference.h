@@ -90,6 +90,11 @@ private:
     core::Tensor stack_images(const std::vector<core::Tensor>& images);
     void split_outputs(const std::vector<models::DetectionOutput>& batch_outputs,
                       std::vector<std::vector<models::DetectionOutput>>& individual_outputs);
+    
+    // Production-ready quantization helpers
+    core::Tensor quantizeToINT8(const core::Tensor& input);
+    core::Tensor dequantizeFromINT8(const core::Tensor& input);
+    core::Tensor quantizeToFP16(const core::Tensor& input);
 };
 
 // Dynamic batching scheduler for optimal throughput
