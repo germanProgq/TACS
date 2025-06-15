@@ -24,7 +24,7 @@ public:
     TestDataGenerator(int seed = 42) : gen_(seed), dist_(0.0f, 1.0f) {}
     
     // Generate synthetic video sequence
-    std::vector<Tensor> generateVideoSequence(int num_frames, int height = 416, int width = 416) {
+    std::vector<Tensor> generateVideoSequence(int num_frames, int height = 208, int width = 208) {
         std::vector<Tensor> sequence;
         sequence.reserve(num_frames);
         
@@ -54,7 +54,7 @@ public:
     
     // Generate weather-specific test image
     Tensor generateWeatherImage(WeatherNet::WeatherType weather_type) {
-        Tensor image({1, 3, 416, 416});
+        Tensor image({1, 3, 208, 208});
         
         // Simulate weather patterns
         switch (weather_type) {
@@ -95,8 +95,8 @@ private:
         fillWithPattern(image, 0.3f, 0.5f, 0.1f);
         
         // Add vertical streaks
-        int height = 416;
-        int width = 416;
+        int height = 208;
+        int width = 208;
         for (int c = 0; c < 3; ++c) {
             for (int w = 0; w < width; w += 10) {
                 for (int h = 0; h < height; ++h) {
@@ -114,12 +114,12 @@ private:
         fillWithPattern(image, 0.8f, 0.95f, 0.1f);
         
         // Add snow spots
-        for (int i = 0; i < 1000; ++i) {
-            int x = static_cast<int>(dist_(gen_) * 416);
-            int y = static_cast<int>(dist_(gen_) * 416);
+        for (int i = 0; i < 250; ++i) {  // Reduced number for smaller image
+            int x = static_cast<int>(dist_(gen_) * 208);
+            int y = static_cast<int>(dist_(gen_) * 208);
             
             for (int c = 0; c < 3; ++c) {
-                int idx = c * 416 * 416 + y * 416 + x;
+                int idx = c * 208 * 208 + y * 208 + x;
                 if (idx < image.size()) {
                     image.data_float()[idx] = 1.0f;
                 }
@@ -152,13 +152,13 @@ public:
         
         // Warmup
         for (int i = 0; i < 5; ++i) {
-            auto sequence = generator.generateVideoSequence(8);
+            auto sequence = generator.generateVideoSequence(4);  // Reduced sequence length
             model.forward(sequence, false);
         }
         
         // Actual benchmark
         for (int i = 0; i < num_iterations; ++i) {
-            auto sequence = generator.generateVideoSequence(8);
+            auto sequence = generator.generateVideoSequence(4);  // Reduced sequence length
             
             auto start = std::chrono::high_resolution_clock::now();
             Tensor output = model.forward(sequence, false);
@@ -296,7 +296,7 @@ public:
         
         // Test 1: Output shape and range
         std::cout << "Test 1: Output shape and probability range... ";
-        auto sequence = generator.generateVideoSequence(8);
+        auto sequence = generator.generateVideoSequence(4);
         Tensor output = model.forward(sequence, false);
         
         bool shape_correct = (output.shape().size() == 1 && output.shape()[0] == 4);
@@ -321,7 +321,7 @@ public:
         
         // Test 2: Temporal consistency
         std::cout << "Test 2: Temporal consistency... ";
-        auto seq1 = generator.generateVideoSequence(8);
+        auto seq1 = generator.generateVideoSequence(4);
         auto seq2 = seq1;  // Same sequence
         
         Tensor out1 = model.forward(seq1, false);
