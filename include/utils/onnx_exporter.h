@@ -85,6 +85,16 @@ private:
     void add_output_info(const std::string& name, const std::vector<int64_t>& dims,
                          int32_t data_type);
     
+    void add_weight_initializer(const std::string& name, const std::vector<int64_t>& dims);
+    
+    void add_bias_initializer(const std::string& name, const std::vector<int64_t>& dims);
+    
+    void add_reshape_node(const std::string& input_name, const std::string& output_name,
+                          const std::vector<int64_t>& shape);
+    
+    void add_split_node(const std::string& input_name, const std::vector<std::string>& output_names,
+                        int64_t axis, const std::vector<int64_t>& split_sizes);
+    
     bool write_onnx_file(const std::string& filepath);
     
     enum class WireType : uint8_t {

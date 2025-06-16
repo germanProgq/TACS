@@ -77,6 +77,9 @@ set(SOURCES
     src/tracking/kalman_filter.cpp
     src/tracking/hungarian_algorithm.cpp
     src/tracking/memory_tracker.cpp
+    src/rl/rl_policy_net.cpp
+    src/drone/drone_swarm.cpp
+    src/drone/aerial_inference.cpp
 )
 
 set(HEADERS
@@ -96,12 +99,26 @@ set(HEADERS
     include/tracking/kalman_filter.h
     include/tracking/hungarian_algorithm.h
     include/tracking/memory_tracker.h
+    include/rl/rl_policy_net.h
+    include/drone/drone_swarm.h
+    include/drone/aerial_inference.h
+)
+
+# Phase 6 sources for ONNX runtime
+set(PHASE6_SOURCES
+    ${SOURCES}
+    src/utils/onnx_runtime.cpp
+    src/utils/onnx_simd_kernels.cpp
 )
 
 add_executable(phase1_validation phase1_validation.cpp ${SOURCES})
 add_executable(phase2_validation phase2_validation.cpp ${PHASE2_SOURCES})
 add_executable(phase3_validation phase3_validation.cpp ${SOURCES})
 add_executable(phase4_validation phase4_validation.cpp ${SOURCES})
+add_executable(phase5_validation phase5_validation.cpp ${SOURCES})
+add_executable(phase6_validation phase6_validation.cpp ${PHASE6_SOURCES})
+add_executable(phase7_validation phase7_validation.cpp ${SOURCES})
+add_executable(tacs_edge_runtime src/edge_runtime.cpp ${PHASE6_SOURCES})
 
 find_package(GTest QUIET)
 if(GTest_FOUND)
