@@ -5,6 +5,28 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Find OpenCV
+find_package(OpenCV QUIET)
+if(NOT OpenCV_FOUND)
+    message(WARNING "OpenCV not found. Plugin system features will be limited.")
+endif()
+
+# Find SDL2
+find_package(SDL2 QUIET)
+if(NOT SDL2_FOUND)
+    # Try pkg-config if find_package fails
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(SDL2 sdl2)
+    endif()
+endif()
+
+if(SDL2_FOUND)
+    message(STATUS "SDL2 found. Simulation frontend will be built.")
+else()
+    message(WARNING "SDL2 not found. Simulation frontend will not be built.")
+endif()
+
 # Detect architecture and set appropriate SIMD flags
 include(CheckCXXCompilerFlag)
 
@@ -74,13 +96,28 @@ set(SOURCES
     src/utils/quantization.cpp
     src/utils/batch_inference.cpp
     src/utils/image_decoder.cpp
+    src/utils/image_processing.cpp
+    src/utils/json_parser.cpp
     src/tracking/kalman_filter.cpp
     src/tracking/hungarian_algorithm.cpp
     src/tracking/memory_tracker.cpp
     src/rl/rl_policy_net.cpp
     src/drone/drone_swarm.cpp
     src/drone/aerial_inference.cpp
+    src/federated/federated_learning.cpp
+    src/federated/v2x_protocol.cpp
+    src/federated/sha256.cpp
+    src/plugin/plugin_system.cpp
 )
+
+# Phase 10 sources for simulation frontend
+if(SDL2_FOUND)
+    set(PHASE10_SOURCES
+        ${SOURCES}
+        src/simulation/simulation_frontend.cpp
+        src/simulation/text_renderer.cpp
+    )
+endif()
 
 set(HEADERS
     include/core/tensor.h
@@ -118,6 +155,46 @@ add_executable(phase4_validation phase4_validation.cpp ${SOURCES})
 add_executable(phase5_validation phase5_validation.cpp ${SOURCES})
 add_executable(phase6_validation phase6_validation.cpp ${PHASE6_SOURCES})
 add_executable(phase7_validation phase7_validation.cpp ${SOURCES})
+add_executable(phase8_validation phase8_validation.cpp ${SOURCES})
+target_link_libraries(phase8_validation z pthread)
+add_executable(phase9_validation phase9_validation.cpp ${SOURCES})
+target_link_libraries(phase9_validation pthread)
+if(OpenCV_FOUND)
+    target_link_libraries(phase9_validation ${OpenCV_LIBS})
+    target_include_directories(phase9_validation PRIVATE ${OpenCV_INCLUDE_DIRS})
+endif()
+
+# Phase 10 validation - always build but with different features
+add_executable(phase10_validation phase10_validation.cpp ${SOURCES})
+target_link_libraries(phase10_validation pthread)
+
+if(SDL2_FOUND)
+    target_compile_definitions(phase10_validation PRIVATE SDL2_FOUND)
+    set(PHASE10_SOURCES_SDL ${SOURCES} src/simulation/simulation_frontend.cpp)
+    target_sources(phase10_validation PRIVATE src/simulation/simulation_frontend.cpp)
+    
+    if(SDL2_INCLUDE_DIRS)
+        target_include_directories(phase10_validation PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(phase10_validation ${SDL2_LIBRARIES})
+    else()
+        # Modern CMake SDL2 handling
+        target_link_libraries(phase10_validation SDL2::SDL2)
+    endif()
+    
+    # Simulation standalone executable
+    add_executable(tacs_simulation src/simulation/simulation_main.cpp ${PHASE10_SOURCES_SDL})
+    target_link_libraries(tacs_simulation pthread)
+    target_compile_definitions(tacs_simulation PRIVATE SDL2_FOUND)
+    if(SDL2_INCLUDE_DIRS)
+        target_include_directories(tacs_simulation PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(tacs_simulation ${SDL2_LIBRARIES})
+    else()
+        target_link_libraries(tacs_simulation SDL2::SDL2)
+    endif()
+else()
+    message(STATUS "Phase 10 will use console-only mode (no SDL2)")
+endif()
+
 add_executable(tacs_edge_runtime src/edge_runtime.cpp ${PHASE6_SOURCES})
 
 find_package(GTest QUIET)

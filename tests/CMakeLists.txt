@@ -29,3 +29,22 @@ target_link_libraries(run_tests
 target_include_directories(run_tests PRIVATE ../include)
 
 add_test(NAME AllTests COMMAND run_tests)
+
+# Federated Learning test executable
+add_executable(test_federated_learning 
+    test_federated_learning.cpp
+    ../src/federated/federated_learning.cpp
+    ../src/federated/v2x_protocol.cpp
+    ../src/core/tensor.cpp
+    ../src/core/memory_manager.cpp
+    ../src/core/tensor_ops.cpp
+)
+
+target_link_libraries(test_federated_learning
+    z
+    pthread
+)
+
+target_include_directories(test_federated_learning PRIVATE ..)
+
+add_test(NAME FederatedLearningTest COMMAND test_federated_learning)
