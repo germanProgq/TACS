@@ -17,6 +17,7 @@
 #include "data/data_loader.h"
 #include "training/optimizer.h"
 #include "training/loss.h"
+#include "training/augmentation.h"
 #include "utils/metrics.h"
 #include "utils/serialization.h"
 #include "core/memory_manager.h"
@@ -36,12 +37,12 @@ struct TrainingConfig {
     bool use_ultra_model = true;  // Use optimized TACSNetUltra by default
     
     // Training hyperparameters
-    int batch_size = 8;  // Reduced for memory efficiency
-    int epochs = 200;
-    float initial_learning_rate = 0.001f;
+    int batch_size = 16;  // Increased for better gradient estimates
+    int epochs = 500;  // More epochs for 99% accuracy
+    float initial_learning_rate = 0.0005f;  // Lower LR for fine-tuning
     float momentum = 0.9f;
-    float weight_decay = 0.0005f;
-    float gradient_clip_norm = 10.0f;
+    float weight_decay = 0.0001f;  // Less regularization
+    float gradient_clip_norm = 5.0f;  // More aggressive clipping
     
     // Optimizer selection
     bool use_adam = true;  // Adam generally works better for detection tasks
@@ -49,10 +50,10 @@ struct TrainingConfig {
     float adam_beta2 = 0.999f;
     float adam_eps = 1e-8f;
     
-    // Loss function weights
-    float lambda_objectness = 1.0f;
-    float lambda_bbox = 5.0f;
-    float lambda_classification = 1.0f;
+    // Loss function weights (optimized for 99% accuracy)
+    float lambda_objectness = 2.0f;  // Emphasis on object detection
+    float lambda_bbox = 10.0f;  // Very high weight for precise localization
+    float lambda_classification = 3.0f;  // Higher weight for correct classification
     
     // Learning rate scheduling
     bool use_cosine_annealing = true;
@@ -64,7 +65,7 @@ struct TrainingConfig {
     int validation_interval = 2;
     int checkpoint_interval = 5;
     int save_best_interval = 1;
-    float best_map_threshold = 0.92f;  // Save model if mAP exceeds this
+    float best_map_threshold = 0.99f;  // Save model if mAP exceeds this (99% accuracy target)
     
     // Performance monitoring
     int log_interval = 10;  // Log every N batches
@@ -77,8 +78,8 @@ struct TrainingConfig {
     
     // Early stopping
     bool enable_early_stopping = true;
-    int patience = 20;  // Stop if no improvement for N epochs
-    float min_delta = 0.001f;  // Minimum improvement to reset patience
+    int patience = 50;  // More patience for 99% accuracy
+    float min_delta = 0.0001f;  // Smaller improvement threshold
     
     // Memory and performance
     int num_workers = std::thread::hardware_concurrency();
@@ -200,6 +201,7 @@ void train_epoch(models::TACSNetUltra& model,
                 data::DataLoader& train_loader,
                 training::Optimizer& optimizer,
                 training::YOLOLoss& loss_fn,
+                training::DataAugmentation& augmentation,
                 const TrainingConfig& config,
                 int epoch) {
     
@@ -223,6 +225,11 @@ void train_epoch(models::TACSNetUltra& model,
     while (train_loader.has_next()) {
         try {
             auto batch = train_loader.next_batch();
+            
+            // Apply data augmentation
+            if (config.enable_augmentation) {
+                augmentation.augment_batch(batch);
+            }
             
             // Prepare batch tensors with proper memory management
             std::vector<core::Tensor> batch_images;
@@ -552,6 +559,17 @@ int main(int argc, char** argv) {
         weights.classification = config.lambda_classification;
         training::YOLOLoss loss_fn(weights);
         
+        // Create data augmentation with enhanced settings for 99% accuracy
+        training::DataAugmentation::AugmentationConfig aug_config;
+        aug_config.horizontal_flip_prob = 0.5f;
+        aug_config.rotation_max_angle = 20.0f;  // More rotation
+        aug_config.scale_min = 0.7f;  // More aggressive scaling
+        aug_config.scale_max = 1.3f;
+        aug_config.mixup_alpha = 0.3f;  // Stronger mixup
+        aug_config.cutout_prob = 0.5f;
+        aug_config.mosaic_prob = 0.5f;
+        training::DataAugmentation augmentation(aug_config);
+        
         // Initialize or load training state
         TrainingState training_state;
         std::string state_path = config.output_dir + "/training_state.txt";
@@ -592,7 +610,7 @@ int main(int argc, char** argv) {
             }
             
             // Training epoch
-            train_epoch(model, train_loader, *optimizer, loss_fn, config, epoch);
+            train_epoch(model, train_loader, *optimizer, loss_fn, augmentation, config, epoch);
             
             // Validation
             float current_map = 0.0f;

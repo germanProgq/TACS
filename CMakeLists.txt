@@ -87,6 +87,7 @@ set(SOURCES
     src/models/tacs_pipeline.cpp
     src/training/optimizer.cpp
     src/training/loss.cpp
+    src/training/augmentation.cpp
     src/data/data_loader.cpp
     src/utils/matrix_ops.cpp
     src/utils/serialization.cpp
@@ -196,6 +197,10 @@ else()
 endif()
 
 add_executable(tacs_edge_runtime src/edge_runtime.cpp ${PHASE6_SOURCES})
+
+# Phase 10 enhanced console demo
+add_executable(phase10_console_demo phase10_console_demo.cpp ${SOURCES})
+target_link_libraries(phase10_console_demo pthread)
 
 find_package(GTest QUIET)
 if(GTest_FOUND)

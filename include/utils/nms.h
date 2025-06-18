@@ -23,8 +23,8 @@ struct NMSDetection {
 };
 
 struct NMSConfig {
-    float iou_threshold = 0.45f;
-    std::vector<float> class_confidence_thresholds = {0.5f, 0.4f, 0.4f}; // cars, pedestrians, cyclists
+    float iou_threshold = 0.3f;  // More aggressive NMS to reduce duplicate detections
+    std::vector<float> class_confidence_thresholds = {0.7f, 0.65f, 0.65f}; // Higher thresholds for 99% accuracy
     int max_detections = 100;
 };
 

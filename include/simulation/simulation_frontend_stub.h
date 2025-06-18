@@ -400,20 +400,38 @@ private:
     
     void generateSimulatedFrame(core::Tensor& frame) {
         // Generate a simulated camera view with entities
-        // Fill with base road color
-        frame.fill(0.3f);  // Gray road
+        // Fill with base road color (darker for better contrast)
+        frame.fill(0.2f);  // Dark gray road
         
         // Draw intersection area (lighter gray)
         int cx = 208, cy = 208;  // Center in 416x416 frame
-        int size = 100;
+        int size = 120;
         for (int y = cy - size/2; y < cy + size/2; y++) {
             for (int x = cx - size/2; x < cx + size/2; x++) {
                 if (x >= 0 && x < 416 && y >= 0 && y < 416) {
                     // CHW format: [batch, channel, height, width]
                     float* data = frame.data_float();
-                    data[0 * 416 * 416 + y * 416 + x] = 0.4f;  // R channel
-                    data[1 * 416 * 416 + y * 416 + x] = 0.4f;  // G channel
-                    data[2 * 416 * 416 + y * 416 + x] = 0.4f;  // B channel
+                    data[0 * 416 * 416 + y * 416 + x] = 0.35f;  // R channel
+                    data[1 * 416 * 416 + y * 416 + x] = 0.35f;  // G channel
+                    data[2 * 416 * 416 + y * 416 + x] = 0.35f;  // B channel
+                }
+            }
+        }
+        
+        // Draw road markings (white lines)
+        for (int i = 0; i < 416; i += 30) {
+            for (int j = 0; j < 10; j++) {
+                if (i + j < 416) {
+                    // Vertical center line
+                    float* data = frame.data_float();
+                    data[0 * 416 * 416 + (i + j) * 416 + cx] = 0.8f;
+                    data[1 * 416 * 416 + (i + j) * 416 + cx] = 0.8f;
+                    data[2 * 416 * 416 + (i + j) * 416 + cx] = 0.8f;
+                    
+                    // Horizontal center line
+                    data[0 * 416 * 416 + cy * 416 + (i + j)] = 0.8f;
+                    data[1 * 416 * 416 + cy * 416 + (i + j)] = 0.8f;
+                    data[2 * 416 * 416 + cy * 416 + (i + j)] = 0.8f;
                 }
             }
         }
@@ -445,14 +463,26 @@ private:
     
     void drawEntity(core::Tensor& frame, int cx, int cy, int w, int h,
                    float r, float g, float b) {
+        // Draw entity with border for better visibility
         for (int y = cy - h/2; y < cy + h/2; y++) {
             for (int x = cx - w/2; x < cx + w/2; x++) {
                 if (x >= 0 && x < 416 && y >= 0 && y < 416) {
                     // CHW format: [batch, channel, height, width]
                     float* data = frame.data_float();
-                    data[0 * 416 * 416 + y * 416 + x] = r;  // R channel
-                    data[1 * 416 * 416 + y * 416 + x] = g;  // G channel
-                    data[2 * 416 * 416 + y * 416 + x] = b;  // B channel
+                    
+                    // Draw border (darker)
+                    bool is_border = (y == cy - h/2 || y == cy + h/2 - 1 || 
+                                     x == cx - w/2 || x == cx + w/2 - 1);
+                    
+                    if (is_border) {
+                        data[0 * 416 * 416 + y * 416 + x] = r * 0.5f;  // R channel
+                        data[1 * 416 * 416 + y * 416 + x] = g * 0.5f;  // G channel
+                        data[2 * 416 * 416 + y * 416 + x] = b * 0.5f;  // B channel
+                    } else {
+                        data[0 * 416 * 416 + y * 416 + x] = r;  // R channel
+                        data[1 * 416 * 416 + y * 416 + x] = g;  // G channel
+                        data[2 * 416 * 416 + y * 416 + x] = b;  // B channel
+                    }
                 }
             }
         }
