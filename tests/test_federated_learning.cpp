@@ -9,9 +9,9 @@
 #include <thread>
 #include <random>
 #include <cassert>
-#include "../src/federated/federated_learning.h"
-#include "../src/federated/v2x_protocol.h"
-#include "../src/core/tensor.h"
+#include "federated/federated_learning.h"
+#include "federated/v2x_protocol.h"
+#include "core/tensor.h"
 
 using namespace TACS;
 
@@ -29,7 +29,7 @@ public:
             Tensor tensor({16, 16});  // 256 parameters each
             
             for (size_t j = 0; j < tensor.size(); ++j) {
-                tensor.data()[j] = dist(gen);
+                tensor.data_float()[j] = dist(gen);
             }
             
             params[name] = std::move(tensor);
@@ -49,7 +49,7 @@ public:
             
             const Tensor& tensor2 = it->second;
             for (size_t i = 0; i < tensor1.size(); ++i) {
-                total_diff += std::abs(tensor1.data()[i] - tensor2.data()[i]);
+                total_diff += std::abs(tensor1.data_float()[i] - tensor2.data_float()[i]);
                 total_params++;
             }
         }
@@ -109,7 +109,7 @@ void testModelHashing() {
     std::cout << "Hash of identical models: " << hash1.substr(0, 16) << "..." << std::endl;
     
     // Modify one parameter slightly
-    model2["param_0"].data()[0] += 0.001f;
+    model2["param_0"].data_float()[0] += 0.001f;
     std::string hash3 = fl.computeModelHash(model2);
     
     assert(hash1 != hash3);
@@ -166,9 +166,9 @@ void testEWCPenalty() {
     // Create some gradients
     std::unordered_map<std::string, Tensor> grads;
     for (const auto& [name, param] : initial_params) {
-        Tensor grad(param.shape);
+        Tensor grad(param.shape());
         for (size_t i = 0; i < grad.size(); ++i) {
-            grad.data()[i] = 0.01f;  // Small gradient
+            grad.data_float()[i] = 0.01f;  // Small gradient
         }
         grads[name] = grad;
     }

@@ -35,6 +35,7 @@ add_executable(test_federated_learning
     test_federated_learning.cpp
     ../src/federated/federated_learning.cpp
     ../src/federated/v2x_protocol.cpp
+    ../src/federated/sha256.cpp
     ../src/core/tensor.cpp
     ../src/core/memory_manager.cpp
     ../src/core/tensor_ops.cpp

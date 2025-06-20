@@ -310,10 +310,8 @@ core::Tensor DepthwiseConv2D::backward(const core::Tensor& grad_output, const co
     grad_input.zero();
     float* grad_input_data = grad_input.data_float();
     
-    // Zero gradients
-    depthwise_grad_.zero();
-    pointwise_grad_.zero();
-    bias_grad_.zero();
+    // Don't zero gradients here - accumulate them instead
+    // Gradients should be explicitly zeroed before training iteration
     
     // Create intermediate tensor for depthwise output
     core::Tensor depthwise_out({batch_size, in_channels_, out_height, out_width});
@@ -443,6 +441,10 @@ void DepthwiseConv2D::zero_grad() {
     depthwise_grad_.zero();
     pointwise_grad_.zero();
     bias_grad_.zero();
+}
+
+void DepthwiseConv2D::zero_gradients() {
+    zero_grad();
 }
 
 void DepthwiseConv2D::apply_gradients(float learning_rate) {

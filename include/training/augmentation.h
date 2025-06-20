@@ -16,29 +16,49 @@ class DataAugmentation {
 public:
     struct AugmentationConfig {
         // Geometric transformations
-        float horizontal_flip_prob = 0.5f;
-        float rotation_max_angle = 15.0f;  // degrees
-        float scale_min = 0.8f;
-        float scale_max = 1.2f;
-        float translate_max = 0.1f;  // fraction of image size
-        float shear_max = 0.1f;
+        float horizontal_flip_prob;
+        float rotation_max_angle;  // degrees
+        float scale_min;
+        float scale_max;
+        float translate_max;  // fraction of image size
+        float shear_max;
         
         // Color augmentations
-        float brightness_max = 0.3f;
-        float contrast_max = 0.3f;
-        float saturation_max = 0.3f;
-        float hue_max = 0.1f;
+        float brightness_max;
+        float contrast_max;
+        float saturation_max;
+        float hue_max;
         
         // Advanced augmentations
-        float mixup_alpha = 0.2f;
-        float cutout_prob = 0.5f;
-        float cutout_max_size = 0.2f;  // fraction of image
-        float mosaic_prob = 0.5f;
+        float mixup_alpha;
+        float cutout_prob;
+        float cutout_max_size;  // fraction of image
+        float mosaic_prob;
         
         // Noise and blur
-        float gaussian_noise_std = 0.01f;
-        float blur_prob = 0.1f;
-        float blur_kernel_size = 5;
+        float gaussian_noise_std;
+        float blur_prob;
+        float blur_kernel_size;
+        
+        // Constructor with default values
+        AugmentationConfig() : 
+            horizontal_flip_prob(0.5f),
+            rotation_max_angle(15.0f),
+            scale_min(0.8f),
+            scale_max(1.2f),
+            translate_max(0.1f),
+            shear_max(0.1f),
+            brightness_max(0.3f),
+            contrast_max(0.3f),
+            saturation_max(0.3f),
+            hue_max(0.1f),
+            mixup_alpha(0.2f),
+            cutout_prob(0.5f),
+            cutout_max_size(0.2f),
+            mosaic_prob(0.5f),
+            gaussian_noise_std(0.01f),
+            blur_prob(0.1f),
+            blur_kernel_size(5) {}
     };
     
     explicit DataAugmentation(const AugmentationConfig& config = AugmentationConfig{});

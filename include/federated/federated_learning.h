@@ -18,6 +18,7 @@
 #include <atomic>
 
 #include "../include/core/tensor.h"
+#include "../utils/config_manager.h"
 #include "../include/core/memory_manager.h"
 
 namespace TACS {
@@ -41,7 +42,7 @@ struct ModelSnapshot {
 // Federated learning configuration
 struct FederatedConfig {
     // Network settings
-    std::string server_address = "127.0.0.1";
+    std::string server_address = "0.0.0.0";  // Configurable via config file
     int server_port = 8888;
     bool enable_encryption = true;
     
@@ -57,6 +58,24 @@ struct FederatedConfig {
     // V2X settings
     bool enable_v2x = true;
     int v2x_channel = 178;  // DSRC channel for V2X
+    
+    // Load configuration from ConfigManager
+    void loadFromConfig() {
+        auto& config = tacs::utils::ConfigManager::getInstance();
+        server_address = config.getString("network.server_address", server_address);
+        server_port = config.getInt("network.server_port", server_port);
+        enable_encryption = config.getBool("network.enable_encryption", enable_encryption);
+        
+        aggregation_weight = config.getFloat("federated.aggregation_weight", aggregation_weight);
+        distillation_temperature = config.getFloat("federated.distillation_temperature", distillation_temperature);
+        distillation_alpha = config.getFloat("federated.distillation_alpha", distillation_alpha);
+        
+        rollback_threshold = config.getFloat("federated.rollback_threshold", rollback_threshold);
+        min_samples_for_update = config.getInt("federated.min_samples_for_update", min_samples_for_update);
+        
+        enable_v2x = config.getBool("v2x.enable", enable_v2x);
+        v2x_channel = config.getInt("v2x.channel", v2x_channel);
+    }
     std::string v2x_protocol = "DSRC";  // DSRC or C-V2X
     
     // Synchronization

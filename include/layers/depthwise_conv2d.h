@@ -30,8 +30,29 @@ public:
     const core::Tensor& pointwise_weight() const { return pointwise_weight_; }
     const core::Tensor& bias() const { return bias_; }
     
+    // Mutable accessors for weight initialization
+    core::Tensor& depthwise_weight_mutable() { return depthwise_weight_; }
+    core::Tensor& pointwise_weight_mutable() { return pointwise_weight_; }
+    core::Tensor& bias_mutable() { return bias_; }
+    
     // Optimized inference path with fused operations
     core::Tensor forward_optimized(const core::Tensor& input);
+    
+    // Gradient access
+    const core::Tensor& depthwise_weight_grad() const { return depthwise_grad_; }
+    const core::Tensor& pointwise_weight_grad() const { return pointwise_grad_; }
+    const core::Tensor& bias_grad() const { return bias_grad_; }
+    
+    bool has_gradients() const { return depthwise_grad_.size() > 0; }
+    void zero_gradients();
+    
+    // Layer info access
+    int in_channels() const { return in_channels_; }
+    int out_channels() const { return out_channels_; }
+    
+    // Combined weight/bias accessors for simplified initialization
+    core::Tensor& weight() { return pointwise_weight_; }
+    const core::Tensor& weight() const { return pointwise_weight_; }
 
 private:
     int in_channels_;

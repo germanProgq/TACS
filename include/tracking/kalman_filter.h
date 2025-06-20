@@ -79,7 +79,6 @@ private:
     void matrix_add_6x6(const float* A, const float* B, float* C) const;
     void matrix_add_4x4(const float* A, const float* B, float* C) const;
     void matrix_sub_4x1(const float* a, const float* b, float* c) const;
-    void matrix_sub_6x1(const float* a, const float* b, float* c) const;
     void matrix_transpose_6x4(const float* A, float* AT) const;
     void matrix_transpose_4x6(const float* A, float* AT) const;
     void matrix_transpose_6x6(const float* A, float* AT) const;

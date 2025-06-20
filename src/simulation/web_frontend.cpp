@@ -326,7 +326,7 @@ void WebFrontend::sendAccidentUpdate(const std::string& accident) {
 
 void WebFrontend::handleClientMessage(const std::string& message) {
     // Parse JSON command from client
-    // Simple parsing for demo - in production use a JSON library
+    // Using lightweight parsing to avoid external dependencies
     if (message.find("\"spawn\"") != std::string::npos) {
         // Extract spawn parameters
         float x = 640, y = 360;

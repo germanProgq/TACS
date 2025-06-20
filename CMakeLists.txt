@@ -11,6 +11,12 @@ if(NOT OpenCV_FOUND)
     message(WARNING "OpenCV not found. Plugin system features will be limited.")
 endif()
 
+# Find OpenMP for parallel processing
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP found. Parallel processing enabled.")
+endif()
+
 # Find SDL2
 find_package(SDL2 QUIET)
 if(NOT SDL2_FOUND)
@@ -67,6 +73,7 @@ set(PHASE2_SOURCES
     src/layers/leaky_relu.cpp
     src/layers/depthwise_conv2d.cpp
     src/models/tacsnet.cpp
+    src/models/tacsnet_backward.cpp
     src/training/loss.cpp
     src/utils/matrix_ops.cpp
     src/utils/nms.cpp
@@ -82,12 +89,15 @@ set(SOURCES
     src/layers/leaky_relu.cpp
     src/layers/depthwise_conv2d.cpp
     src/models/tacsnet.cpp
+    src/models/tacsnet_backward.cpp
     src/models/accidentnet.cpp
     src/models/weathernet.cpp
     src/models/tacs_pipeline.cpp
     src/training/optimizer.cpp
+    src/training/adaptive_optimizer.cpp
     src/training/loss.cpp
     src/training/augmentation.cpp
+    src/training/gradient_converter.cpp
     src/data/data_loader.cpp
     src/utils/matrix_ops.cpp
     src/utils/serialization.cpp
@@ -128,6 +138,7 @@ set(HEADERS
     include/layers/leaky_relu.h
     include/models/tacsnet.h
     include/training/optimizer.h
+    include/training/adaptive_optimizer.h
     include/training/loss.h
     include/data/data_loader.h
     include/utils/matrix_ops.h
@@ -165,6 +176,14 @@ if(OpenCV_FOUND)
     target_include_directories(phase9_validation PRIVATE ${OpenCV_INCLUDE_DIRS})
 endif()
 
+# Test training adaptation with adaptive optimizer - commented out (file doesn't exist)
+# add_executable(test_training_adaptation test_training_adaptation.cpp ${SOURCES})
+# target_link_libraries(test_training_adaptation pthread)
+
+# Test adaptive optimizer functionality - commented out (file doesn't exist)
+# add_executable(test_adaptive_optimizer test_adaptive_optimizer.cpp ${SOURCES})
+# target_link_libraries(test_adaptive_optimizer pthread)
+
 # Phase 10 validation - always build but with different features
 add_executable(phase10_validation phase10_validation.cpp ${SOURCES})
 target_link_libraries(phase10_validation pthread)
@@ -201,6 +220,59 @@ add_executable(tacs_edge_runtime src/edge_runtime.cpp ${PHASE6_SOURCES})
 # Phase 10 enhanced console demo
 add_executable(phase10_console_demo phase10_console_demo.cpp ${SOURCES})
 target_link_libraries(phase10_console_demo pthread)
+
+
+# Main training executable - commented out (file doesn't exist)
+# add_executable(train_model train_model.cpp ${SOURCES})
+# target_link_libraries(train_model pthread)
+# if(OpenMP_CXX_FOUND)
+#     target_link_libraries(train_model OpenMP::OpenMP_CXX)
+# endif()
+
+# Create pre-trained weights executable
+add_executable(create_pretrained_weights create_pretrained_weights.cpp ${SOURCES})
+target_link_libraries(create_pretrained_weights pthread)
+
+# Adaptive training executable for 99% accuracy - commented out (file doesn't exist)
+# add_executable(train_adaptive train_adaptive.cpp ${SOURCES})
+# target_link_libraries(train_adaptive pthread)
+
+# Test model forward pass - commented out (file doesn't exist)
+# add_executable(test_model_forward test_model_forward.cpp ${SOURCES})
+# target_link_libraries(test_model_forward pthread)
+
+# TACSNet training executable
+add_executable(train_tacsnet train_tacsnet.cpp ${SOURCES})
+target_link_libraries(train_tacsnet pthread)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(train_tacsnet OpenMP::OpenMP_CXX)
+endif()
+
+# Test TACSNet training functionality - commented out (file doesn't exist)
+# add_executable(test_tacsnet_training test_tacsnet_training.cpp ${SOURCES})
+# target_link_libraries(test_tacsnet_training pthread)
+# if(OpenMP_CXX_FOUND)
+#     target_link_libraries(test_tacsnet_training OpenMP::OpenMP_CXX)
+# endif()
+
+# TACSNet 99% accuracy training - commented out (file doesn't exist)
+# add_executable(train_tacsnet_99 train_tacsnet_99.cpp ${SOURCES})
+# target_link_libraries(train_tacsnet_99 pthread)
+# if(OpenMP_CXX_FOUND)
+#     target_link_libraries(train_tacsnet_99 OpenMP::OpenMP_CXX)
+# endif()
+
+# Simple TACSNet test - commented out (file doesn't exist)
+# add_executable(test_tacsnet_simple test_tacsnet_simple.cpp ${SOURCES})
+# target_link_libraries(test_tacsnet_simple pthread)
+
+# TACSNet training with adaptive optimizer - commented out (file doesn't exist)
+# add_executable(train_tacsnet_adaptive train_tacsnet_adaptive.cpp ${SOURCES})
+# target_link_libraries(train_tacsnet_adaptive pthread)
+# if(OpenMP_CXX_FOUND)
+#     target_link_libraries(train_tacsnet_adaptive OpenMP::OpenMP_CXX)
+# endif()
+
 
 find_package(GTest QUIET)
 if(GTest_FOUND)

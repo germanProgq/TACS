@@ -328,6 +328,10 @@ void BatchNorm2D::zero_grad() {
     bias_grad_.zero();
 }
 
+void BatchNorm2D::zero_gradients() {
+    zero_grad();
+}
+
 void BatchNorm2D::apply_gradients(float learning_rate) {
     float* weight_data = weight_.data_float();
     float* bias_data = bias_.data_float();

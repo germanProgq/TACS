@@ -1,5 +1,6 @@
 #include "drone/aerial_inference.h"
 #include "drone/drone_swarm.h"
+#include "utils/config_manager.h"
 #include <cmath>
 #include <algorithm>
 #include <cstring>
@@ -719,7 +720,7 @@ void DroneToGroundComm::communicationLoop() {
     // Parse ground station address
     size_t colonPos = groundStationAddress_.find(':');
     std::string ipAddr = groundStationAddress_.substr(0, colonPos);
-    int port = 8080;
+    int port = utils::ConfigManager::getInstance().getInt("v2x.port", 5900);
     if (colonPos != std::string::npos) {
         port = std::stoi(groundStationAddress_.substr(colonPos + 1));
     }

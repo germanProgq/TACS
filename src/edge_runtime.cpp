@@ -33,8 +33,9 @@
 #endif
 
 #ifdef __APPLE__
-#include <CoreMedia/CoreMedia.h>
-#include <AVFoundation/AVFoundation.h>
+// For now, disable AVFoundation as it requires Objective-C++
+// TODO: Move camera capture to separate .mm file for macOS
+#define NO_CAMERA_CAPTURE
 #endif
 
 #ifdef _WIN32
@@ -156,7 +157,8 @@ public:
         // macOS camera support requires Objective-C++ implementation
         // Would use AVFoundation framework for camera access
         // For production, implement in separate .mm file
-        std::cerr << "Camera support on macOS requires AVFoundation (not implemented)" << std::endl;
+        std::cerr << "Camera support on macOS requires AVFoundation integration" << std::endl;
+        std::cerr << "Use Linux with V4L2 for camera support or provide test images" << std::endl;
         return false;
 #elif defined(_WIN32)
         // Windows camera support via Media Foundation

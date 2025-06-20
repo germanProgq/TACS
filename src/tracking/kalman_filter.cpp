@@ -499,29 +499,6 @@ void KalmanFilter::matrix_sub_4x1(const float* a, const float* b, float* c) cons
 #endif
 }
 
-void KalmanFilter::matrix_sub_6x1(const float* a, const float* b, float* c) const {
-#if defined(__SSE__) && defined(__x86_64__)
-    __m128 va1 = _mm_loadu_ps(&a[0]);
-    __m128 vb1 = _mm_loadu_ps(&b[0]);
-    __m128 vc1 = _mm_sub_ps(va1, vb1);
-    _mm_storeu_ps(&c[0], vc1);
-    // Handle remaining 2 elements
-    c[4] = a[4] - b[4];
-    c[5] = a[5] - b[5];
-#elif defined(__ARM_NEON) && (defined(__aarch64__) || defined(__arm__))
-    float32x4_t va1 = vld1q_f32(&a[0]);
-    float32x4_t vb1 = vld1q_f32(&b[0]);
-    float32x4_t vc1 = vsubq_f32(va1, vb1);
-    vst1q_f32(&c[0], vc1);
-    // Handle remaining 2 elements
-    c[4] = a[4] - b[4];
-    c[5] = a[5] - b[5];
-#else
-    for (int i = 0; i < STATE_DIM; ++i) {
-        c[i] = a[i] - b[i];
-    }
-#endif
-}
 
 void KalmanFilter::matrix_transpose_6x4(const float* A, float* AT) const {
     for (int i = 0; i < STATE_DIM; ++i) {

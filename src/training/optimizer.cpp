@@ -26,7 +26,7 @@ void SGDOptimizer::step() {
             continue; // Skip parameters without gradients
         }
         
-        update_parameter(name, param_info.gradient, param_info.parameter);
+        update_parameter(name, param_info.gradient, *param_info.parameter);
     }
 }
 
@@ -50,7 +50,7 @@ void SGDOptimizer::add_parameter_group(const std::string& name, core::Tensor& pa
     }
     
     ParameterInfo info;
-    info.parameter = parameter;
+    info.parameter = &parameter;  // Store pointer to the actual parameter
     info.gradient = core::Tensor(parameter.shape());
     info.gradient.zero();
     
@@ -69,7 +69,7 @@ void SGDOptimizer::set_gradient(const std::string& name, const core::Tensor& gra
         throw std::runtime_error("Parameter " + name + " not found");
     }
     
-    if (gradient.size() != it->second.parameter.size()) {
+    if (gradient.size() != it->second.parameter->size()) {
         throw std::runtime_error("Gradient size mismatch for parameter " + name);
     }
     
@@ -179,7 +179,7 @@ void AdamOptimizer::step() {
             continue; // Skip parameters without gradients
         }
         
-        update_parameter(name, param_info.gradient, param_info.parameter);
+        update_parameter(name, param_info.gradient, *param_info.parameter);
     }
 }
 
@@ -198,7 +198,7 @@ void AdamOptimizer::add_parameter_group(const std::string& name, core::Tensor& p
     }
     
     ParameterInfo info;
-    info.parameter = parameter;
+    info.parameter = &parameter;  // Store pointer to the actual parameter
     info.gradient = core::Tensor(parameter.shape());
     info.gradient.zero();
     
@@ -217,7 +217,7 @@ void AdamOptimizer::set_gradient(const std::string& name, const core::Tensor& gr
         throw std::runtime_error("Parameter " + name + " not found");
     }
     
-    if (gradient.size() != it->second.parameter.size()) {
+    if (gradient.size() != it->second.parameter->size()) {
         throw std::runtime_error("Gradient size mismatch for parameter " + name);
     }
     

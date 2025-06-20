@@ -20,7 +20,7 @@ class SyntheticTrafficGenerator:
         self.output_dir = output_dir
         self.num_train = num_train
         self.num_val = num_val
-        self.image_size = (416, 416)
+        self.image_size = (1280, 720)  # HD resolution for better quality
         
         # Set seed for reproducibility across runs
         if seed is None:
@@ -29,49 +29,49 @@ class SyntheticTrafficGenerator:
         random.seed(seed)
         np.random.seed(seed)
         
-        # 3D camera parameters for multiple viewpoints - focused on capturing objects
+        # 3D camera parameters for multiple viewpoints - realistic traffic camera positions
         self.camera_configs = [
             {
-                'name': 'intersection_high',
-                'position': (0, -15, 8),  # x, y, z in meters - closer and lower
-                'rotation': (-55, 0, 0),  # pitch, yaw, roll in degrees - look down sharply at street
-                'fov': 90,  # wider fov to capture street level
-                'description': 'High angle intersection view looking at street'
+                'name': 'intersection_overview',
+                'position': (15, 15, 12),  # Corner of intersection, elevated
+                'rotation': (-45, -135, 0),  # Looking down at intersection center
+                'fov': 75,
+                'description': 'Overview of intersection from corner'
             },
             {
-                'name': 'street_level',
-                'position': (10, -10, 2.5),  # street corner position
-                'rotation': (-35, 45, 0),  # angle down towards street center
-                'fov': 85,
-                'description': 'Street level corner view of traffic'
+                'name': 'street_monitoring',
+                'position': (0, 25, 8),  # Along street, elevated position
+                'rotation': (-35, 180, 0),  # Looking back down the street
+                'fov': 65,
+                'description': 'Street monitoring camera'
             },
             {
-                'name': 'traffic_cam',
-                'position': (0, -18, 6),  # standard traffic cam position
-                'rotation': (-50, 0, 0),  # look down at street traffic
+                'name': 'traffic_pole',
+                'position': (-12, 0, 6),  # Traffic pole mount position
+                'rotation': (-30, 90, 0),  # Looking across the street
+                'fov': 70,
+                'description': 'Standard traffic pole camera'
+            },
+            {
+                'name': 'building_mount',
+                'position': (20, -10, 15),  # Mounted on building
+                'rotation': (-50, 30, 0),  # Looking down at street angle
+                'fov': 60,
+                'description': 'Building-mounted surveillance'
+            },
+            {
+                'name': 'crosswalk_view',
+                'position': (-8, 12, 5),  # Near crosswalk
+                'rotation': (-25, -45, 0),  # Focused on pedestrian crossing
                 'fov': 80,
-                'description': 'Standard traffic camera angle focused on road'
+                'description': 'Crosswalk monitoring camera'
             },
             {
-                'name': 'side_view',
-                'position': (15, 0, 4),  # side position looking across road
-                'rotation': (-45, -90, 0),  # look down and across road
+                'name': 'wide_street_view',
+                'position': (0, -20, 10),  # Central position, good height
+                'rotation': (-40, 0, 0),  # Looking straight ahead down street
                 'fov': 85,
-                'description': 'Side street monitoring of road traffic'
-            },
-            {
-                'name': 'diagonal_high',
-                'position': (8, -8, 7),  # diagonal corner position
-                'rotation': (-60, 45, 0),  # look down sharply at street intersection
-                'fov': 80,
-                'description': 'Diagonal overhead view of intersection'
-            },
-            {
-                'name': 'low_angle',
-                'position': (6, -12, 1.8),  # low mounted street camera
-                'rotation': (-25, 30, 0),  # look slightly down at road
-                'fov': 95,  # very wide fov for street level coverage
-                'description': 'Low mounted camera capturing road activity'
+                'description': 'Wide street coverage camera'
             }
         ]
         
@@ -429,9 +429,9 @@ class SyntheticTrafficGenerator:
     
     def render_ground_plane(self, img, draw, camera):
         """Render ground plane to establish scene depth"""
-        # Create ground plane grid
-        ground_color = (100, 100, 100)  # Gray ground
-        grid_size = 5  # 5 meter grid
+        # Enhanced ground rendering with perspective
+        base_ground_color = (95, 95, 95)  # Asphalt gray
+        grid_size = 2  # 2 meter grid for more detail
         
         # Define ground plane corners in world space
         ground_corners = []
@@ -455,48 +455,129 @@ class SyntheticTrafficGenerator:
             if len(projected) == 4:
                 # Draw ground square with slight variation
                 color_var = random.randint(-10, 10)
-                square_color = tuple(max(0, min(255, c + color_var)) for c in ground_color)
+                square_color = tuple(max(0, min(255, c + color_var)) for c in base_ground_color)
                 draw.polygon(projected, fill=square_color, outline=(90, 90, 90))
     
     def render_buildings(self, img, draw, buildings, camera):
-        """Render 3D buildings with perspective"""
+        """Render 3D buildings with enhanced textures and details"""
         for building in buildings:
             pos = building['position']
             size = building['size']
             
+            # Add slight variations to building dimensions
+            size_var = [s * (0.9 + random.random() * 0.2) for s in size]
+            
             # Get building corners
             corners = [
-                (pos[0] - size[0]/2, pos[1] - size[1]/2, pos[2]),
-                (pos[0] + size[0]/2, pos[1] - size[1]/2, pos[2]),
-                (pos[0] + size[0]/2, pos[1] + size[1]/2, pos[2]),
-                (pos[0] - size[0]/2, pos[1] + size[1]/2, pos[2]),
-                (pos[0] - size[0]/2, pos[1] - size[1]/2, pos[2] + size[2]),
-                (pos[0] + size[0]/2, pos[1] - size[1]/2, pos[2] + size[2]),
-                (pos[0] + size[0]/2, pos[1] + size[1]/2, pos[2] + size[2]),
-                (pos[0] - size[0]/2, pos[1] + size[1]/2, pos[2] + size[2])
+                (pos[0] - size_var[0]/2, pos[1] - size_var[1]/2, pos[2]),
+                (pos[0] + size_var[0]/2, pos[1] - size_var[1]/2, pos[2]),
+                (pos[0] + size_var[0]/2, pos[1] + size_var[1]/2, pos[2]),
+                (pos[0] - size_var[0]/2, pos[1] + size_var[1]/2, pos[2]),
+                (pos[0] - size_var[0]/2, pos[1] - size_var[1]/2, pos[2] + size_var[2]),
+                (pos[0] + size_var[0]/2, pos[1] - size_var[1]/2, pos[2] + size_var[2]),
+                (pos[0] + size_var[0]/2, pos[1] + size_var[1]/2, pos[2] + size_var[2]),
+                (pos[0] - size_var[0]/2, pos[1] + size_var[1]/2, pos[2] + size_var[2])
             ]
             
-            # Project to 2D
+            # Project to 2D and calculate depths
             projected = []
+            depths = []
             for corner in corners:
                 p2d = self.project_3d_to_2d(corner, camera)
                 if p2d:
                     projected.append(p2d)
+                    depths.append(np.linalg.norm(np.array(corner) - np.array(camera['position'])))
+                else:
+                    projected.append(None)
+                    depths.append(float('inf'))
             
-            if len(projected) >= 4:
-                # Draw building faces
-                building_color = (120, 120, 140) if building['type'] == 'office' else (160, 140, 120)
+            if sum(1 for p in projected if p is not None) >= 4:
+                # Enhanced building colors
+                color_schemes = {
+                    'office': [(140, 145, 160), (130, 135, 150), (150, 155, 170)],
+                    'residential': [(180, 170, 160), (170, 160, 150), (190, 180, 170)],
+                    'commercial': [(160, 150, 140), (150, 140, 130), (170, 160, 150)]
+                }
+                building_type = building.get('type', 'office')
+                building_color = random.choice(color_schemes.get(building_type, color_schemes['office']))
                 
-                # Draw visible faces based on camera angle
+                # Sort faces by average depth (painter's algorithm)
                 faces = [
-                    [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],  # Sides
-                    [4, 5, 6, 7]  # Top
+                    ([0, 1, 5, 4], 'front'),
+                    ([1, 2, 6, 5], 'right'),
+                    ([2, 3, 7, 6], 'back'),
+                    ([3, 0, 4, 7], 'left'),
+                    ([4, 5, 6, 7], 'top'),
+                    ([0, 1, 2, 3], 'bottom')
                 ]
                 
-                for face in faces:
-                    if all(i < len(projected) for i in face):
-                        points = [projected[i] for i in face]
-                        draw.polygon(points, fill=building_color, outline=(80, 80, 80))
+                face_depths = []
+                for face_indices, face_name in faces:
+                    if all(i < len(projected) and projected[i] is not None for i in face_indices):
+                        avg_depth = sum(depths[i] for i in face_indices) / len(face_indices)
+                        face_depths.append((avg_depth, face_indices, face_name))
+                
+                face_depths.sort(reverse=True)
+                
+                for _, face_indices, face_name in face_depths:
+                    points = [projected[i] for i in face_indices if projected[i] is not None]
+                    if len(points) >= 3:
+                        # Vary shading based on face orientation
+                        shade_factors = {'front': 0.9, 'back': 0.7, 'left': 0.8, 'right': 0.85, 'top': 1.0, 'bottom': 0.6}
+                        shade = shade_factors.get(face_name, 0.8)
+                        face_color = tuple(int(c * shade) for c in building_color)
+                        
+                        draw.polygon(points, fill=face_color, outline=tuple(int(c * 0.6) for c in face_color))
+                        
+                        # Add window details on vertical faces
+                        if face_name in ['front', 'back', 'left', 'right'] and len(points) == 4:
+                            self._add_building_windows(draw, points, size_var[2])
+    
+    def _add_building_windows(self, draw, face_points, building_height):
+        """Add window details to building faces"""
+        if len(face_points) != 4:
+            return
+            
+        # Calculate window grid
+        window_rows = max(3, int(building_height / 3))
+        window_cols = 4
+        
+        # Window properties
+        window_margin = 0.15  # Margin from edges
+        
+        for row in range(window_rows):
+            for col in range(window_cols):
+                # Calculate window position using bilinear interpolation
+                row_ratio = (row + 0.5) / window_rows
+                col_ratio = (col + 0.5) / window_cols
+                
+                # Apply margins
+                row_ratio = window_margin + row_ratio * (1 - 2 * window_margin)
+                col_ratio = window_margin + col_ratio * (1 - 2 * window_margin)
+                
+                # Interpolate position
+                top_x = face_points[0][0] * (1 - col_ratio) + face_points[1][0] * col_ratio
+                top_y = face_points[0][1] * (1 - row_ratio) + face_points[3][1] * row_ratio
+                
+                bottom_x = face_points[3][0] * (1 - col_ratio) + face_points[2][0] * col_ratio
+                bottom_y = face_points[1][1] * (1 - row_ratio) + face_points[2][1] * row_ratio
+                
+                x = int(top_x * (1 - row_ratio) + bottom_x * row_ratio)
+                y = int(top_y * (1 - row_ratio) + bottom_y * row_ratio)
+                
+                # Window size based on face size
+                window_width = abs(face_points[1][0] - face_points[0][0]) / (window_cols * 2.5)
+                window_height = abs(face_points[3][1] - face_points[0][1]) / (window_rows * 2.5)
+                
+                # Window color (lit or dark)
+                if random.random() > 0.3:
+                    window_color = (200, 200, 150)  # Lit window
+                else:
+                    window_color = (80, 90, 100)  # Dark window
+                
+                draw.rectangle([x - window_width/2, y - window_height/2,
+                              x + window_width/2, y + window_height/2],
+                              fill=window_color, outline=(60, 60, 60))
     
     def render_roads_3d(self, img, draw, roads, camera):
         """Render 3D roads with lane markings"""
@@ -653,36 +734,66 @@ class SyntheticTrafficGenerator:
             self.render_3d_cyclist(draw, bbox_2d, color, obj_state)
     
     def render_3d_car(self, draw, bbox_2d, color, state):
-        """Render a 3D car from bounding box points"""
+        """Render a 3D car from bounding box points with realistic details"""
         if len(bbox_2d) >= 8:
-            # Draw car body faces
-            # Bottom face
-            draw.polygon(bbox_2d[:4], fill=tuple(int(c*0.7) for c in color))
-            # Top face
-            draw.polygon(bbox_2d[4:8], fill=color)
-            # Side faces
-            for i in range(4):
-                j = (i + 1) % 4
-                face = [bbox_2d[i], bbox_2d[j], bbox_2d[j+4], bbox_2d[i+4]]
-                draw.polygon(face, fill=tuple(int(c*0.85) for c in color))
+            # Enhanced car rendering with better shading
+            # Calculate face depths to render in correct order
+            center = tuple(sum(p[i] for p in bbox_2d) / 8 for i in range(2))
+            
+            # Define faces with their indices
+            faces = [
+                (bbox_2d[:4], 'bottom', 0.4),  # Bottom darker
+                (bbox_2d[4:8], 'top', 1.1),     # Top lighter
+                ([bbox_2d[0], bbox_2d[1], bbox_2d[5], bbox_2d[4]], 'front', 0.9),
+                ([bbox_2d[2], bbox_2d[3], bbox_2d[7], bbox_2d[6]], 'back', 0.7),
+                ([bbox_2d[0], bbox_2d[3], bbox_2d[7], bbox_2d[4]], 'left', 0.8),
+                ([bbox_2d[1], bbox_2d[2], bbox_2d[6], bbox_2d[5]], 'right', 0.85)
+            ]
+            
+            # Sort faces by average Y coordinate (painter's algorithm)
+            faces.sort(key=lambda f: sum(p[1] for p in f[0]) / len(f[0]))
+            
+            # Draw faces
+            for face_points, face_name, shade in faces:
+                if len(face_points) >= 3:
+                    face_color = tuple(min(255, int(c * shade)) for c in color)
+                    draw.polygon(face_points, fill=face_color, outline=tuple(int(c * 0.6) for c in face_color))
             
             # Production-ready vehicle windows with realistic reflections
             if len(bbox_2d) >= 8:
-                # Windshield with realistic tint and reflections
-                windshield_color = (60, 80, 120, 150)  # Blue tint
-                draw.polygon([bbox_2d[4], bbox_2d[5], 
-                            tuple(int(0.7*bbox_2d[5][i] + 0.3*bbox_2d[6][i]) for i in range(2)),
-                            tuple(int(0.7*bbox_2d[4][i] + 0.3*bbox_2d[7][i]) for i in range(2))],
-                           fill=windshield_color)
+                # Windshield with realistic glass effect
+                windshield_color = (70, 90, 130)  # Darker blue tint
+                windshield_points = [
+                    bbox_2d[4], bbox_2d[5], 
+                    tuple(int(0.7*bbox_2d[5][i] + 0.3*bbox_2d[6][i]) for i in range(2)),
+                    tuple(int(0.7*bbox_2d[4][i] + 0.3*bbox_2d[7][i]) for i in range(2))
+                ]
+                draw.polygon(windshield_points, fill=windshield_color)
+                # Add glare/reflection line
+                glare_color = (150, 170, 200)
+                if len(windshield_points) >= 4:
+                    draw.line([windshield_points[0], windshield_points[2]], fill=glare_color, width=2)
                 
-                # Side windows
-                side_window_color = (40, 60, 100, 160)
+                # Side windows with better transparency effect
+                side_window_color = (50, 70, 110)
                 # Left window
-                draw.polygon([bbox_2d[0], bbox_2d[4], bbox_2d[7], bbox_2d[3]], 
-                           fill=side_window_color)
+                left_window = [bbox_2d[0], bbox_2d[4], bbox_2d[7], bbox_2d[3]]
+                draw.polygon(left_window, fill=side_window_color)
                 # Right window  
-                draw.polygon([bbox_2d[1], bbox_2d[5], bbox_2d[6], bbox_2d[2]], 
-                           fill=side_window_color)
+                right_window = [bbox_2d[1], bbox_2d[5], bbox_2d[6], bbox_2d[2]]
+                draw.polygon(right_window, fill=side_window_color)
+                
+                # Add wheel wells (darker areas for wheels)
+                wheel_color = (20, 20, 20)
+                # Front wheels
+                if len(bbox_2d) >= 8:
+                    wheel_size = abs(bbox_2d[1][0] - bbox_2d[0][0]) // 6
+                    # Front left wheel
+                    draw.ellipse([bbox_2d[0][0] - wheel_size//2, bbox_2d[0][1] - wheel_size,
+                                 bbox_2d[0][0] + wheel_size//2, bbox_2d[0][1]], fill=wheel_color)
+                    # Front right wheel
+                    draw.ellipse([bbox_2d[1][0] - wheel_size//2, bbox_2d[1][1] - wheel_size,
+                                 bbox_2d[1][0] + wheel_size//2, bbox_2d[1][1]], fill=wheel_color)
                 
                 # Rear window
                 rear_window_color = (30, 50, 90, 170)
@@ -690,6 +801,26 @@ class SyntheticTrafficGenerator:
                             tuple(int(0.8*bbox_2d[7][i] + 0.2*bbox_2d[3][i]) for i in range(2)),
                             tuple(int(0.8*bbox_2d[6][i] + 0.2*bbox_2d[2][i]) for i in range(2))],
                            fill=rear_window_color)
+        elif len(bbox_2d) >= 4:
+            # Fallback: enhanced 2D representation when not all points visible
+            xs = [p[0] for p in bbox_2d]
+            ys = [p[1] for p in bbox_2d]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            
+            # Draw car body with gradient effect
+            body_height = y_max - y_min
+            # Bottom darker part (chassis)
+            draw.rectangle([x_min, y_min + body_height*0.6, x_max, y_max], 
+                          fill=tuple(int(c*0.7) for c in color))
+            # Top lighter part (cabin)
+            draw.rectangle([x_min + (x_max-x_min)*0.1, y_min, x_max - (x_max-x_min)*0.1, y_min + body_height*0.6], 
+                          fill=color)
+            # Windows
+            window_color = (50, 70, 110)
+            draw.rectangle([x_min + (x_max-x_min)*0.15, y_min + body_height*0.1, 
+                           x_max - (x_max-x_min)*0.15, y_min + body_height*0.5], 
+                          fill=window_color)
     
     def render_3d_pedestrian(self, draw, bbox_2d, color, state):
         """Render a 3D pedestrian"""
@@ -832,32 +963,53 @@ class SyntheticTrafficGenerator:
     
     def create_sky_background(self, time_condition, weather):
         """Create realistic sky gradient based on time and weather"""
-        img = Image.new('RGB', self.image_size)
+        img = Image.new('RGB', self.image_size, 'white')
         draw = ImageDraw.Draw(img)
         
-        # Sky colors based on time of day
+        # Enhanced sky colors for better realism
         sky_colors = {
-            'day': {'top': (135, 206, 235), 'bottom': (255, 255, 255)},
-            'dusk': {'top': (255, 94, 77), 'bottom': (255, 154, 0)},
-            'night': {'top': (25, 25, 112), 'bottom': (72, 61, 139)},
-            'dawn': {'top': (255, 191, 0), 'bottom': (255, 229, 180)}
+            'day': {'top': (120, 180, 240), 'horizon': (180, 220, 255), 'bottom': (230, 240, 250)},
+            'dusk': {'top': (120, 94, 180), 'horizon': (255, 154, 100), 'bottom': (255, 180, 120)},
+            'night': {'top': (10, 15, 45), 'horizon': (30, 40, 80), 'bottom': (50, 60, 100)},
+            'dawn': {'top': (100, 120, 200), 'horizon': (255, 200, 150), 'bottom': (255, 230, 200)}
         }
         
         colors = sky_colors.get(time_condition, sky_colors['day'])
         
         # Apply weather modifications
         if weather == 'rain':
-            colors = {'top': tuple(int(c * 0.6) for c in colors['top']),
-                     'bottom': tuple(int(c * 0.7) for c in colors['bottom'])}
+            colors = {
+                'top': tuple(int(c * 0.7) for c in colors['top']),
+                'horizon': tuple(int(c * 0.75) for c in colors['horizon']),
+                'bottom': tuple(int(c * 0.8) for c in colors['bottom'])
+            }
         elif weather == 'fog':
-            colors = {'top': (200, 200, 200), 'bottom': (220, 220, 220)}
+            colors = {'top': (180, 180, 185), 'horizon': (200, 200, 205), 'bottom': (220, 220, 225)}
+        elif weather == 'overcast':
+            colors = {
+                'top': tuple(int(c * 0.8) for c in colors['top']),
+                'horizon': tuple(int(c * 0.85) for c in colors['horizon']),
+                'bottom': tuple(int(c * 0.9) for c in colors['bottom'])
+            }
         
-        # Create gradient
-        for y in range(self.image_size[1]):
-            ratio = y / self.image_size[1]
-            r = int(colors['top'][0] * (1 - ratio) + colors['bottom'][0] * ratio)
-            g = int(colors['top'][1] * (1 - ratio) + colors['bottom'][1] * ratio)
-            b = int(colors['top'][2] * (1 - ratio) + colors['bottom'][2] * ratio)
+        # Create smoother gradient with horizon line
+        height = self.image_size[1]
+        horizon_y = int(height * 0.4)  # Horizon at 40% from top
+        
+        # Top to horizon
+        for y in range(horizon_y):
+            ratio = y / horizon_y
+            r = int(colors['top'][0] * (1 - ratio) + colors['horizon'][0] * ratio)
+            g = int(colors['top'][1] * (1 - ratio) + colors['horizon'][1] * ratio)
+            b = int(colors['top'][2] * (1 - ratio) + colors['horizon'][2] * ratio)
+            draw.rectangle([(0, y), (self.image_size[0], y + 1)], fill=(r, g, b))
+        
+        # Horizon to bottom
+        for y in range(horizon_y, height):
+            ratio = (y - horizon_y) / (height - horizon_y)
+            r = int(colors['horizon'][0] * (1 - ratio) + colors['bottom'][0] * ratio)
+            g = int(colors['horizon'][1] * (1 - ratio) + colors['bottom'][1] * ratio)
+            b = int(colors['horizon'][2] * (1 - ratio) + colors['bottom'][2] * ratio)
             draw.rectangle([(0, y), (self.image_size[0], y + 1)], fill=(r, g, b))
         
         return img
@@ -1185,23 +1337,26 @@ class SyntheticTrafficGenerator:
         # Initialize object states for consistent behavior
         object_states = []
         
-        # Generate cars
-        num_cars = int(random.uniform(0.8, 1.2) * pattern['car_density'] * 10)
+        # Generate cars - ensure at least 2 cars
+        num_cars = max(2, int(random.uniform(0.8, 1.2) * pattern['car_density'] * 10))
         for _ in range(num_cars):
             state = self.generate_object_state(0, scenario, pattern['speed_modifier'])
             object_states.append(state)
         
-        # Generate pedestrians
-        num_pedestrians = int(random.uniform(0.8, 1.2) * pattern['pedestrian_density'] * 10)
+        # Generate pedestrians - ensure at least 1 pedestrian
+        num_pedestrians = max(1, int(random.uniform(0.8, 1.2) * pattern['pedestrian_density'] * 10))
         for _ in range(num_pedestrians):
             state = self.generate_object_state(1, scenario, pattern['speed_modifier'])
             object_states.append(state)
         
-        # Generate cyclists
-        num_cyclists = int(random.uniform(0.8, 1.2) * pattern['cyclist_density'] * 10)
+        # Generate cyclists - ensure at least 1 cyclist
+        num_cyclists = max(1, int(random.uniform(0.8, 1.2) * pattern['cyclist_density'] * 10))
         for _ in range(num_cyclists):
             state = self.generate_object_state(2, scenario, pattern['speed_modifier'])
             object_states.append(state)
+        
+        # Check for initial collisions and adjust positions
+        self._resolve_initial_collisions(object_states)
         
         return {
             'scenario': scenario,
@@ -1246,16 +1401,16 @@ class SyntheticTrafficGenerator:
         behavior = behaviors[behavior_name]
         
         # Initial 3D position in visible area based on lane preference
-        # Place objects in front of cameras (positive Y direction)
+        # Place objects around camera view area (cameras are at negative Y)
         if class_info['lane_preference'] == 'road':
             # Place on road lanes - cars drive along roads
             x = random.uniform(-8, 8)    # Across the road width
-            y = random.uniform(0, 15)    # In front of camera (positive Y)
-            z = 0  # Ground level
+            y = random.uniform(-20, 20)  # Around camera area
+            z = 0.3  # Slightly above ground for car clearance
         elif class_info['lane_preference'] == 'sidewalk':
             # Place on sidewalks - pedestrians walk on sides
             x = random.uniform(-10, 10)
-            y = random.uniform(0, 12)    # In front of camera
+            y = random.uniform(-15, 15)  # Around camera area
             # Choose sidewalk side
             if x > 0:
                 x = random.uniform(6, 10)   # Right sidewalk
@@ -1265,13 +1420,13 @@ class SyntheticTrafficGenerator:
         else:  # bike_lane
             # Place in bike lanes - cyclists on road edges
             x = random.uniform(-6, 6)
-            y = random.uniform(2, 10)    # In front of camera
+            y = random.uniform(-12, 12)  # Around camera area
             # Bias towards road edges
             if random.random() > 0.5:
                 x = random.uniform(3, 6)    # Right bike lane
             else:
                 x = random.uniform(-6, -3)  # Left bike lane
-            z = 0
+            z = 0.2  # Slightly above ground for bike clearance
         
         # 3D velocity with variance
         base_vx, base_vy, base_vz = behavior['velocity']
@@ -1307,6 +1462,77 @@ class SyntheticTrafficGenerator:
             'walk_phase': random.uniform(0, 2 * np.pi),
             'pedal_phase': random.uniform(0, 2 * np.pi)
         }
+    
+    def _resolve_initial_collisions(self, object_states):
+        """Resolve initial collisions between objects"""
+        max_attempts = 10
+        
+        for i, obj1 in enumerate(object_states):
+            attempts = 0
+            while attempts < max_attempts:
+                collision_found = False
+                
+                for j, obj2 in enumerate(object_states):
+                    if i != j and self._check_collision(obj1, obj2):
+                        collision_found = True
+                        # Move obj1 to a new random position
+                        if obj1['class_id'] == 0:  # Car
+                            obj1['x'] = random.uniform(-8, 8)
+                            obj1['y'] = random.uniform(-20, 20)
+                        elif obj1['class_id'] == 1:  # Pedestrian
+                            obj1['x'] = random.uniform(-10, 10)
+                            if obj1['x'] > 0:
+                                obj1['x'] = random.uniform(6, 10)
+                            else:
+                                obj1['x'] = random.uniform(-10, -6)
+                            obj1['y'] = random.uniform(-15, 15)
+                        else:  # Cyclist
+                            obj1['x'] = random.uniform(-6, 6)
+                            if random.random() > 0.5:
+                                obj1['x'] = random.uniform(3, 6)
+                            else:
+                                obj1['x'] = random.uniform(-6, -3)
+                            obj1['y'] = random.uniform(-12, 12)
+                        break
+                
+                if not collision_found:
+                    break
+                attempts += 1
+    
+    def _check_collision(self, obj1, obj2):
+        """Check if two objects are colliding in 3D space"""
+        # Get object sizes
+        size1 = self.classes[obj1['class_id']]['size_3d']
+        size2 = self.classes[obj2['class_id']]['size_3d']
+        
+        # Calculate bounding box extents
+        min_distance_x = (size1[0] + size2[0]) / 2
+        min_distance_y = (size1[2] + size2[2]) / 2  # width is at index 2
+        min_distance_z = (size1[1] + size2[1]) / 2
+        
+        # Check collision
+        dx = abs(obj1['x'] - obj2['x'])
+        dy = abs(obj1['y'] - obj2['y'])
+        dz = abs(obj1.get('z', 0) - obj2.get('z', 0))
+        
+        return dx < min_distance_x and dy < min_distance_y and dz < min_distance_z
+    
+    def _check_camera_collision(self, obj_state, camera_pos):
+        """Check if an object collides with camera position"""
+        obj_size = self.classes[obj_state['class_id']]['size_3d']
+        
+        # Camera collision radius (meters)
+        camera_radius = 2.0
+        
+        # Check distance
+        dx = abs(obj_state['x'] - camera_pos[0])
+        dy = abs(obj_state['y'] - camera_pos[1])
+        dz = abs(obj_state.get('z', 0) - camera_pos[2])
+        
+        # Check if object bounding box intersects with camera sphere
+        return (dx < obj_size[0]/2 + camera_radius and 
+                dy < obj_size[2]/2 + camera_radius and 
+                dz < obj_size[1]/2 + camera_radius)
     
     def simulate_frame(self, scenario_data, frame_num, delta_time=0.1):
         """Simulate one frame with 3D physics updates"""
@@ -1407,6 +1633,71 @@ class SyntheticTrafficGenerator:
         
         return img, annotations, scenario_data
     
+    def generate_multi_view_images(self, scenario_data):
+        """Generate images from multiple camera viewpoints for the same scene"""
+        multi_view_data = {
+            'scenario_data': scenario_data,
+            'views': []
+        }
+        
+        # Define specific camera views to capture
+        view_cameras = [
+            self._get_camera_by_name('intersection_overview'),  # Overview from corner
+            self._get_camera_by_name('street_monitoring'),      # Along street view
+            self._get_camera_by_name('traffic_pole'),          # Side view
+            self._get_camera_by_name('building_mount'),        # Elevated angle view
+        ]
+        
+        for camera in view_cameras:
+            if camera:
+                # Render scene from this camera
+                img, annotations = self.render_3d_frame(scenario_data, camera)
+                
+                # Check for collisions
+                collisions = self._detect_collisions_in_frame(scenario_data, camera)
+                
+                # Add collision info to annotations
+                for ann in annotations:
+                    ann['has_collision'] = ann['object_id'] in collisions
+                    ann['collision_type'] = collisions.get(ann['object_id'], None)
+                
+                multi_view_data['views'].append({
+                    'camera': camera,
+                    'image': img,
+                    'annotations': annotations,
+                    'collisions': collisions
+                })
+        
+        return multi_view_data
+    
+    def _get_camera_by_name(self, name):
+        """Get camera configuration by name"""
+        for camera in self.camera_configs:
+            if camera['name'] == name:
+                return camera
+        return None
+    
+    def _detect_collisions_in_frame(self, scenario_data, camera):
+        """Detect all collisions in the current frame"""
+        collisions = {}
+        object_states = scenario_data['object_states']
+        
+        # Check object-object collisions
+        for i, obj1 in enumerate(object_states):
+            for j, obj2 in enumerate(object_states):
+                if i < j and self._check_collision(obj1, obj2):
+                    obj1_id = id(obj1)
+                    obj2_id = id(obj2)
+                    collisions[obj1_id] = 'object_collision'
+                    collisions[obj2_id] = 'object_collision'
+        
+        # Check object-camera collisions
+        for obj in object_states:
+            if self._check_camera_collision(obj, camera['position']):
+                collisions[id(obj)] = 'camera_collision'
+        
+        return collisions
+    
     def render_3d_frame(self, scenario_data, camera):
         """Render a frame from 3D scene with proper perspective"""
         # Create 3D scene background
@@ -1418,6 +1709,9 @@ class SyntheticTrafficGenerator:
         )
         
         annotations = []
+        
+        # Detect collisions in this frame
+        collisions = self._detect_collisions_in_frame(scenario_data, camera)
         
         # Sort objects by distance from camera for proper occlusion
         camera_pos = np.array(camera['position'])
@@ -1464,14 +1758,17 @@ class SyntheticTrafficGenerator:
                     w = (x_max - x_min) / self.image_size[0]
                     h = (y_max - y_min) / self.image_size[1]
                     
+                    obj_id = id(obj_state)
                     annotations.append({
                         'class_id': obj_state['class_id'],
                         'cx': cx,
                         'cy': cy,
                         'w': w,
                         'h': h,
-                        'object_id': id(obj_state),
+                        'object_id': obj_id,
                         'camera_view': camera['name'],
+                        'has_collision': obj_id in collisions,
+                        'collision_type': collisions.get(obj_id, None),
                         '3d_info': {
                             'position': position_3d,
                             'rotation': obj_state.get('rotation', 0),
@@ -1898,6 +2195,9 @@ class SyntheticTrafficGenerator:
         with open(os.path.join(self.output_dir, 'dataset_info.json'), 'w') as f:
             json.dump(dataset_info, f, indent=2)
         
+        # Create training manifest file
+        self._create_training_manifest(train_manifest, val_manifest)
+        
         # Export 3D models for web interface
         print(f"\nExporting 3D models for web interface...")
         self.export_3d_model_library()
@@ -1940,6 +2240,91 @@ class SyntheticTrafficGenerator:
             'scenario_distribution': scenario_counts,
             'avg_objects_per_image': total_objects / len(manifest) if manifest else 0
         }
+    
+    def _create_training_manifest(self, train_manifest, val_manifest):
+        """Create comprehensive training manifest for AI model"""
+        manifest = {
+            'dataset_name': 'Traffic AI Synthetic Dataset',
+            'format_version': '1.0',
+            'creation_date': datetime.now().isoformat(),
+            'dataset_root': self.output_dir,
+            'image_format': 'jpg',
+            'annotation_format': 'yolo',
+            'image_size': {
+                'width': self.image_size[0],
+                'height': self.image_size[1]
+            },
+            'classes': [
+                {'id': 0, 'name': 'car', 'color': [200, 50, 50]},
+                {'id': 1, 'name': 'pedestrian', 'color': [50, 200, 50]},
+                {'id': 2, 'name': 'cyclist', 'color': [50, 50, 200]}
+            ],
+            'splits': {
+                'train': {
+                    'num_images': len(train_manifest),
+                    'images_dir': 'train/images',
+                    'labels_dir': 'train/labels',
+                    'file_list': [item['image'] for item in train_manifest]
+                },
+                'val': {
+                    'num_images': len(val_manifest),
+                    'images_dir': 'val/images',
+                    'labels_dir': 'val/labels',
+                    'file_list': [item['image'] for item in val_manifest]
+                }
+            },
+            'training_config': {
+                'model_type': 'TACSNet',
+                'input_size': self.image_size,
+                'batch_size': 16,
+                'epochs': 100,
+                'learning_rate': 0.001,
+                'augmentation': {
+                    'flip_horizontal': True,
+                    'brightness_range': [0.8, 1.2],
+                    'contrast_range': [0.8, 1.2],
+                    'saturation_range': [0.8, 1.2],
+                    'blur_probability': 0.1
+                }
+            }
+        }
+        
+        # Save manifest
+        manifest_path = os.path.join(self.output_dir, 'training_manifest.json')
+        with open(manifest_path, 'w') as f:
+            json.dump(manifest, f, indent=2)
+        
+        # Also create YOLO-format data.yaml
+        self._create_yolo_config()
+        
+        print(f"\nCreated training manifest: {manifest_path}")
+    
+    def _create_yolo_config(self):
+        """Create YOLO format configuration file"""
+        yolo_config = {
+            'path': os.path.abspath(self.output_dir),
+            'train': 'train/images',
+            'val': 'val/images',
+            'names': {
+                0: 'car',
+                1: 'pedestrian',
+                2: 'cyclist'
+            }
+        }
+        
+        # Save as YAML
+        yaml_path = os.path.join(self.output_dir, 'data.yaml')
+        with open(yaml_path, 'w') as f:
+            f.write(f"# Traffic AI Dataset Configuration\n")
+            f.write(f"path: {yolo_config['path']}\n")
+            f.write(f"train: {yolo_config['train']}\n")
+            f.write(f"val: {yolo_config['val']}\n")
+            f.write(f"\n# Classes\n")
+            f.write(f"names:\n")
+            for class_id, class_name in yolo_config['names'].items():
+                f.write(f"  {class_id}: {class_name}\n")
+        
+        print(f"Created YOLO config: {yaml_path}")
 
 
 def main():

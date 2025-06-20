@@ -119,8 +119,8 @@ void DataAugmentation::apply_rotation(core::Tensor& image, std::vector<data::Bou
         
         // Adjust box size (approximate)
         float scale = std::abs(cos_a) + std::abs(sin_a);
-        box.width *= scale;
-        box.height *= scale;
+        box.w *= scale;
+        box.h *= scale;
         
         // Clip to valid range
         clip_bbox(box, width, height);
@@ -132,15 +132,15 @@ void DataAugmentation::apply_scale(core::Tensor& image, std::vector<data::Boundi
     for (auto& box : boxes) {
         box.x = 0.5f + (box.x - 0.5f) * scale;
         box.y = 0.5f + (box.y - 0.5f) * scale;
-        box.width *= scale;
-        box.height *= scale;
+        box.w *= scale;
+        box.h *= scale;
     }
     
     // Remove boxes that go out of bounds
     boxes.erase(std::remove_if(boxes.begin(), boxes.end(),
                               [](const data::BoundingBox& box) {
-                                  return box.x - box.width/2 < 0 || box.x + box.width/2 > 1 ||
-                                         box.y - box.height/2 < 0 || box.y + box.height/2 > 1;
+                                  return box.x - box.w/2 < 0 || box.x + box.w/2 > 1 ||
+                                         box.y - box.h/2 < 0 || box.y + box.h/2 > 1;
                               }), boxes.end());
 }
 
@@ -262,10 +262,10 @@ void DataAugmentation::clip_bbox(data::BoundingBox& box, int img_w, int img_h) {
     box.y = std::clamp(box.y, 0.0f, 1.0f);
     
     // Clip width and height
-    float max_width = 1.0f - (box.x - box.width / 2.0f);
-    float max_height = 1.0f - (box.y - box.height / 2.0f);
-    box.width = std::min(box.width, max_width * 2.0f);
-    box.height = std::min(box.height, max_height * 2.0f);
+    float max_width = 1.0f - (box.x - box.w / 2.0f);
+    float max_height = 1.0f - (box.y - box.h / 2.0f);
+    box.w = std::min(box.w, max_width * 2.0f);
+    box.h = std::min(box.h, max_height * 2.0f);
 }
 
 void DataAugmentation::adjust_saturation(core::Tensor& image, float factor) {
@@ -328,7 +328,10 @@ void DataAugmentation::apply_gaussian_blur(core::Tensor& image, int kernel_size)
     int width = shape[2];
     
     int half_kernel = kernel_size / 2;
-    core::Tensor blurred = image.clone();
+    core::Tensor blurred(image.shape());
+    const float* src = image.data_float();
+    float* dst = blurred.data_float();
+    std::copy(src, src + image.size(), dst);
     float* src_data = image.data_float();
     float* dst_data = blurred.data_float();
     
@@ -372,8 +375,8 @@ void DataAugmentation::apply_mosaic(std::vector<data::Sample>& samples) {
     for (int i = 0; i < 4; ++i) {
         // Scale boxes to sub-image
         for (auto& box : samples[i].boxes) {
-            box.width *= 0.5f;
-            box.height *= 0.5f;
+            box.w *= 0.5f;
+            box.h *= 0.5f;
             
             // Position in appropriate quadrant
             if (i == 0) {  // Top-left

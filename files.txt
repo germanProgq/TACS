@@ -1,0 +1,63 @@
+# TACS Project File Analysis
+
+## Files to DELETE (not used or redundant)
+- debug_training.cpp                    # Not referenced in CMakeLists.txt, likely a debug file
+- test_json_debug.cpp                   # Already deleted, was likely a debug file
+- create_initial_weights.cpp            # Redundant - we have create_pretrained_weights.cpp
+
+## Files to BRING BACK (improve the app)
+### High Priority - Core Functionality
+- include/federated/crypto_utils.h      # Needed for secure federated learning
+- include/layers/conv2d_fp16.h          # FP16 optimization for faster inference
+- scripts/generate_synthetic_dataset.py  # Useful for generating training data
+- scripts/train_based_on_dataset.py     # Python training scripts for comparison
+- inference_99_accuracy.cpp             # Contains optimized inference parameters for 99% accuracy
+
+### Medium Priority - Testing and Validation
+- train_tacsnet_99.cpp                  # Specialized training for 99% accuracy target
+- test_tacsnet_training.cpp             # Unit tests for training functionality
+- test_adaptive_optimizer.cpp           # Tests for adaptive optimizer
+- test_model_forward.cpp                # Tests for model forward pass
+
+### Low Priority - Alternative Implementations
+- train_model.cpp                       # Generic training script (train_tacsnet.cpp is sufficient)
+- train_adaptive.cpp                    # Redundant with adaptive optimizer in train_tacsnet.cpp
+- train_tacsnet_adaptive.cpp            # Redundant - adaptive features already integrated
+- test_training_adaptation.cpp          # Can be merged with test_adaptive_optimizer.cpp
+- test_tacsnet_simple.cpp               # Basic tests covered by phase validations
+
+## Files to ADD TO GIT (currently untracked but used)
+- src/training/adaptive_optimizer.cpp    # Referenced in CMakeLists.txt line 97
+- include/training/adaptive_optimizer.h  # Referenced in CMakeLists.txt line 141
+- src/training/gradient_converter.cpp    # Referenced in CMakeLists.txt line 100
+- include/training/gradient_converter.h  # Should be added for completeness
+- create_pretrained_weights.cpp          # Referenced in CMakeLists.txt line 233
+
+## Files that can STAY DELETED
+- include/plugin/plugin_system_simple.h  # Replaced by full plugin_system
+- src/plugin/plugin_system_simple.cpp    # Replaced by full plugin_system
+- include/stb_image_write.h             # External dependency, not needed
+- VALIDATION_SUMMARY.md                 # Documentation, not critical
+- train_99_accuracy.sh                  # Bash script, functionality in C++ now
+
+## RECOMMENDATIONS
+
+1. **Immediate Actions:**
+   - Add untracked files to git that are referenced in CMakeLists.txt
+   - Delete debug_training.cpp and create_initial_weights.cpp
+   
+2. **For 99% Accuracy Goal:**
+   - Bring back inference_99_accuracy.cpp for optimized inference parameters
+   - Consider bringing back train_tacsnet_99.cpp if current training doesn't reach target
+   
+3. **For Production Readiness:**
+   - Bring back conv2d_fp16.h for FP16 optimization
+   - Bring back crypto_utils.h for secure federated learning
+   
+4. **For Testing:**
+   - Bring back test_tacsnet_training.cpp and test_adaptive_optimizer.cpp
+   - These will help ensure training stability and correctness
+
+5. **Simplification:**
+   - Keep only train_tacsnet.cpp as the main training executable
+   - Don't bring back redundant training scripts (train_model.cpp, train_adaptive.cpp, etc.)

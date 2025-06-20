@@ -67,7 +67,7 @@ struct DroneSwarmConfig {
     double referenceLongitude = -122.4194; // San Francisco default
     float groundPlaneHeight = 0.0f;
     bool enableV2XLocalProcessing = true;
-    std::string droneNetworkBase = "192.168.100.0";
+    std::string droneNetworkBase = "192.168.100.0";  // Default network, configurable via DroneSwarmConfig
     int v2xPort = 47347;
 };
 

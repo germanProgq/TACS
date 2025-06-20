@@ -14,6 +14,7 @@
 #include "models/tacs_pipeline.h"
 #include "rl/rl_policy_net.h"
 #include "utils/metrics.h"
+#include "utils/config_manager.h"
 
 namespace tacs {
 
@@ -33,7 +34,7 @@ enum class MessageType {
 // Web frontend that serves HTML/JS and streams AI data via WebSocket
 class WebFrontend {
 public:
-    WebFrontend(int port = 8080);
+    WebFrontend(int port = -1);  // -1 means use config value
     ~WebFrontend();
     
     // Start web server and WebSocket server

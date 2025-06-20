@@ -29,7 +29,7 @@ public:
 
 // Parameter information structure
 struct ParameterInfo {
-    core::Tensor parameter;
+    core::Tensor* parameter;  // Pointer to the actual parameter
     core::Tensor gradient;
 };
 

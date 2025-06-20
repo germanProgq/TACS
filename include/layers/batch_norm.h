@@ -27,6 +27,19 @@ public:
     const core::Tensor& running_mean() const { return running_mean_; }
     const core::Tensor& running_var() const { return running_var_; }
     
+    // Mutable accessors for weight initialization
+    core::Tensor& weight_mutable() { return weight_; }
+    core::Tensor& bias_mutable() { return bias_; }
+    
+    // Gradient access
+    const core::Tensor& weight_grad() const { return weight_grad_; }
+    const core::Tensor& bias_grad() const { return bias_grad_; }
+    
+    bool has_gradients() const { return weight_grad_.size() > 0; }
+    void zero_gradients();
+    core::Tensor& running_mean_mutable() { return running_mean_; }
+    core::Tensor& running_var_mutable() { return running_var_; }
+    
     void zero_grad();
     void apply_gradients(float learning_rate);
     void set_training(bool training) { training_ = training; }

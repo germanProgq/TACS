@@ -16,6 +16,7 @@ float YOLOLoss::compute_loss(const std::vector<models::DetectionOutput>& predict
     }
     
     float total_loss = 0.0f;
+    const float loss_clip_value = 10.0f; // More aggressive clipping to stabilize training
     
     for (size_t scale = 0; scale < predictions.size(); ++scale) {
         const auto& pred = predictions[scale];
@@ -49,12 +50,19 @@ float YOLOLoss::compute_loss(const std::vector<models::DetectionOutput>& predict
         float bbox_loss = compute_bbox_loss(pred_bbox, target_bbox, object_mask);
         float cls_loss = compute_classification_loss(pred_cls, target_cls, object_mask);
         
-        total_loss += weights_.objectness * obj_loss + 
-                      weights_.bbox * bbox_loss + 
-                      weights_.classification * cls_loss;
+        // Clip individual loss components to prevent instability
+        obj_loss = std::clamp(obj_loss, 0.0f, loss_clip_value);
+        bbox_loss = std::clamp(bbox_loss, 0.0f, loss_clip_value);
+        cls_loss = std::clamp(cls_loss, 0.0f, loss_clip_value);
+        
+        float scale_loss = weights_.objectness * obj_loss + 
+                          weights_.bbox * bbox_loss + 
+                          weights_.classification * cls_loss;
+        
+        total_loss += std::clamp(scale_loss, 0.0f, loss_clip_value * 3.0f);
     }
     
-    return total_loss;
+    return std::clamp(total_loss, 0.0f, loss_clip_value * 10.0f);
 }
 
 std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::DetectionOutput>& predictions,
@@ -107,7 +115,7 @@ std::vector<core::Tensor> YOLOLoss::backward(const std::vector<models::Detection
         
         // Optimized gradient computation with improved numerical stability
         const float epsilon = 1e-7f;
-        const float gradient_clip_value = 10.0f;
+        const float gradient_clip_value = 1.0f;  // More aggressive clipping to prevent explosion
         
         for (int n = 0; n < batch_size; ++n) {
             for (int a = 0; a < num_anchors; ++a) {
@@ -216,11 +224,13 @@ float YOLOLoss::compute_objectness_loss(const core::Tensor& pred_objectness,
     
     float loss = 0.0f;
     int valid_samples = 0;
+    const float max_loss_per_sample = 2.0f; // More aggressive per-sample clipping
     
     for (size_t i = 0; i < pred_objectness.size(); ++i) {
         if (ignore_data[i] < 0.5f) {
             float pred_sigmoid = sigmoid(pred_data[i]);
-            loss += binary_cross_entropy(pred_sigmoid, target_data[i]);
+            float sample_loss = binary_cross_entropy(pred_sigmoid, target_data[i]);
+            loss += std::min(sample_loss, max_loss_per_sample);
             valid_samples++;
         }
     }
@@ -332,6 +342,8 @@ float YOLOLoss::compute_giou(const std::vector<float>& box1, const std::vector<f
 }
 
 float YOLOLoss::sigmoid(float x) {
+    // Clip input to prevent overflow
+    x = std::clamp(x, -20.0f, 20.0f);
     return 1.0f / (1.0f + std::exp(-x));
 }
 
@@ -411,8 +423,11 @@ void YOLOLoss::assign_targets_to_grid(const core::Tensor& targets,
             
             target_bbox_data[base_idx * 4 + 0] = cx * grid_w - gx;
             target_bbox_data[base_idx * 4 + 1] = cy * grid_h - gy;
-            target_bbox_data[base_idx * 4 + 2] = std::log(w * grid_w / anchors[best_anchor * 2] + 1e-7f);
-            target_bbox_data[base_idx * 4 + 3] = std::log(h * grid_h / anchors[best_anchor * 2 + 1] + 1e-7f);
+            // Ensure stable log computation by clamping the ratio
+            float w_ratio = std::max(0.01f, w * grid_w / anchors[best_anchor * 2]);
+            float h_ratio = std::max(0.01f, h * grid_h / anchors[best_anchor * 2 + 1]);
+            target_bbox_data[base_idx * 4 + 2] = std::log(w_ratio);
+            target_bbox_data[base_idx * 4 + 3] = std::log(h_ratio);
             
             target_obj_data[base_idx] = 1.0f;
             object_mask_data[base_idx] = 1.0f;
