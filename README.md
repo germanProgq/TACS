@@ -1015,7 +1015,7 @@ For issues, questions, or contributions:
 - **Issues**: [GitHub Issues](https://github.com/your-org/tacs/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-org/tacs/discussions)
 - **Documentation**: [Wiki](https://github.com/your-org/tacs/wiki)
-- **Security**: security@tacs-project.org (PGP key available)
+- **Security**: gvinok@duck.com (PGP key available)
 
 ---
 
